@@ -1,0 +1,9 @@
+[workspace]
+members = [
+    "rafos-console",
+    "rafos-syscall",
+    "rafos-macros",
+    "rafos-tests",
+]
+resolver = "1"
+exclude = ["rafos-syscall"]
