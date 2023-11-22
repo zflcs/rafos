@@ -4,6 +4,11 @@ members = [
     "rafos-syscall",
     "rafos-macros",
     "rafos-tests",
+    "rafos-executor",
+    "rafos-libs/rafos-runtime",
+    "rafos-libs/rafos-heap",
 ]
 resolver = "1"
-exclude = ["rafos-syscall"]
+
+# [profile.release]
+# opt-level = 1

@@ -6,3 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+executor = { path = "../rafos-executor", package = "rafos-executor"}
+runtime = { path = "../rafos-libs/rafos-runtime", package = "rafos-runtime"}
+libloading = "0.8"

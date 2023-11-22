@@ -115,7 +115,7 @@ pub fn main(_attr: TokenStream, item: TokenStream) -> TokenStream {
     derive_fn
 }
 
-
+/// function instrumentation
 #[proc_macro]
 pub fn get_libfn(item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
