@@ -14,7 +14,7 @@ use crossbeam::atomic::AtomicCell;
 
 /// The pointer of `Task`
 #[repr(transparent)]
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TaskRef {
     ptr: NonNull<Task>,
 }
@@ -31,14 +31,14 @@ impl TaskRef {
     }
 
     /// The returned pointer
-    pub(crate) fn as_ptr(self) -> *const Task {
+    pub fn as_ptr(self) -> *const Task {
         self.ptr.as_ptr()
     }
 }
 
 ///
 #[repr(C)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TaskType {
     ///
     KernelSche,
@@ -49,7 +49,7 @@ pub enum TaskType {
 /// The `Task` is stored in heap by using `Arc`.
 #[repr(C)]
 pub struct Task {
-    pub(crate) executor: AtomicCell<Option<&'static Executor>>,
+    pub(crate) executor: &'static Executor,
     ///
     pub priority: AtomicU32,
     ///
@@ -61,12 +61,13 @@ pub struct Task {
 impl Task {
     /// Create a new Task, in not-spawned state.
     pub fn new(
+        executor: &'static Executor,
         fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>,
         priority: u32,
         task_type: TaskType
     ) -> Arc<Self> {
         Arc::new(Self {
-            executor: AtomicCell::new(None),
+            executor,
             priority: AtomicU32::new(priority),
             task_type,
             fut: AtomicCell::new(fut),
@@ -79,14 +80,14 @@ impl Task {
     }
 
     ///
-    pub fn execute(self: Arc<Self>) -> Poll<i32> {
-        unsafe {
-            let waker = waker::from_task(self.clone());
-            let mut cx = Context::from_waker(&waker);
-            let fut = &mut *self.fut.as_ptr();
-            let mut future = Pin::new_unchecked(fut.as_mut());
-            future.as_mut().poll(&mut cx)
-        }
+    pub fn as_ref(self: Arc<Self>) -> TaskRef {
+        unsafe { TaskRef::from_ptr(Arc::into_raw(self)) }
+    }
+
+    /// 
+    pub fn from_ref(task_ref: TaskRef) -> Arc<Self> {
+        let raw_ptr = task_ref.as_ptr();
+        unsafe { Arc::from_raw(raw_ptr) }
     }
 }
 
@@ -96,7 +97,22 @@ impl Task {
 pub fn wake_task(task_ref: TaskRef) {
     unsafe {
         let task_ptr = task_ref.as_ptr();
-        let executor = task_ptr as *const usize as *const Executor;
-        (&*executor).wake_task_from_ref(task_ref)
+        let executor = (*task_ptr).executor;
+        executor.wake_task_from_ref(task_ref)
+    }
+}
+
+/// 
+pub fn execute(task_ref: TaskRef) -> Option<TaskRef> {
+    unsafe {
+        let waker = waker::from_task(task_ref);
+        let mut cx = Context::from_waker(&waker);
+        let task = Task::from_ref(task_ref);
+        let fut = &mut *task.fut.as_ptr();
+        let mut future = Pin::new_unchecked(fut.as_mut());
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(_) => { None },
+            Poll::Pending => { Some(task.as_ref()) },
+        }
     }
 }

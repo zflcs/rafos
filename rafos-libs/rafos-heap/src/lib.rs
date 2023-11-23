@@ -70,17 +70,18 @@ unsafe impl GlobalAlloc for Global {
 
 
 
-///
-#[lang = "eh_personality"]
-#[no_mangle]
-pub fn rust_eh_personality() {}
+pub mod lang_item {
+    ///
+    #[lang = "eh_personality"]
+    #[no_mangle]
+    pub fn rust_eh_personality() {}
 
-/// not_kernel panic
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    unreachable!()
+    /// not_kernel panic
+    #[panic_handler]
+    fn panic(_info: &core::panic::PanicInfo) -> ! {
+        unreachable!()
+    }
 }
-
 
 #[alloc_error_handler]
 pub fn handle_alloc_error(layout: core::alloc::Layout) -> ! {

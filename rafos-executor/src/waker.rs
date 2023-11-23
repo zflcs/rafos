@@ -2,7 +2,6 @@
 //!
 
 use super::task::{wake_task, Task, TaskRef};
-use alloc::sync::Arc;
 use core::task::{RawWaker, RawWakerVTable, Waker};
 
 const VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake, drop);
@@ -15,14 +14,11 @@ unsafe fn wake(p: *const ()) {
     wake_task(TaskRef::from_ptr(p as *const Task))
 }
 
-unsafe fn drop(p: *const ()) {
+unsafe fn drop(_p: *const ()) {
     // nop
-    let _task = Arc::from_raw(p as *mut Task);
-    #[cfg(test)]
-    println!("count {}", Arc::strong_count(&_task));
 }
 
 /// 
-pub unsafe fn from_task(task: Arc<Task>) -> Waker {
-    Waker::from_raw(RawWaker::new(Arc::into_raw(task) as _, &VTABLE))
+pub unsafe fn from_task(task_ref: TaskRef) -> Waker {
+    Waker::from_raw(RawWaker::new(task_ref.as_ptr() as _, &VTABLE))
 }

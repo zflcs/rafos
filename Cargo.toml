@@ -5,6 +5,7 @@ members = [
     "rafos-macros",
     "rafos-tests",
     "rafos-executor",
+    "rafos-kernel",
     "rafos-libs/rafos-runtime",
     "rafos-libs/rafos-heap",
 ]

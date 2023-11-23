@@ -16,7 +16,7 @@ elf: $(APPS)
 
 test: elf runtime
 	@$(foreach elf, $(ELFS), $(OBJDUMP) -S -t $(elf) > $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.asm, $(elf));)
-	$(foreach elf, $(ELFS), $(QEMU) $(elf))
+	$(foreach elf, $(ELFS), $(QEMU) -cpu rv64 $(elf))
 
 
 

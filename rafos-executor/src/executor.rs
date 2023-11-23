@@ -1,86 +1,113 @@
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::{sync::atomic::{AtomicU32, Ordering}, future::Future};
 
-use alloc::sync::Arc;
-
-use crate::{queue::*, Task, TaskRef, PRIO_LEVEL};
-use heapless::{FnvIndexSet, Vec};
+use alloc::boxed::Box;
+use crate::{queue::*, Task, TaskRef, PRIO_LEVEL, TaskType};
+use heapless::FnvIndexSet;
+use spin::Mutex;
 
 /// The `Executor` of `async` runtime.
 #[repr(C)]
 pub struct Executor {
     /// this queue uses `FIFO` scheduling mechanism no matter what priority the inner task is.
     /// Once there are tasks in this queue, all the tasks in `RunQueue` should be executed later.
-    wake_queue: WakeQueue,
+    wake_queue: Queue,
     /// The priority will be updated in these situations:
     /// - spawn_task: fetch_min.
     /// - fetch: it will be set as the priority of task which is fetched now.
     /// - wake: fetch_min.
     priority: AtomicU32,
     /// these queues store tasks according to their priority.
-    run_queue: [RunQueue; PRIO_LEVEL],
+    run_queue: [Queue; PRIO_LEVEL],
     /// this set stores the pending tasks.
-    pending_set: FnvIndexSet<TaskRef, 32>,
+    pending_set: Mutex<FnvIndexSet<TaskRef, 32>>,
     /// current task
-    currents: [Option<Arc<Task>>; 4],
+    currents: [Option<TaskRef>; 10],
     /// thread ids
-    threads: Vec<usize, 4>,
+    threads: [usize; 10],
 }
 
 impl Executor {
     ///
     pub fn new() -> Self {
         Self {
-            wake_queue: WakeQueue::new(),
-            run_queue: [RunQueue::EMPTY; 8],
-            pending_set: FnvIndexSet::new(),
-            currents: array_init::array_init(|_| None),
-            threads: Vec::new(),
+            wake_queue: Queue::EMPTY,
+            run_queue: [Queue::EMPTY; 8],
+            pending_set: Mutex::new(FnvIndexSet::new()),
+            // currents: array_init::array_init(|_| None),
+            currents: [None; 10],
+            threads: [usize::MAX; 10],
             priority: AtomicU32::new(u32::MAX),
         }
     }
 
+    /// This will not change the priority immediately
+    pub fn set_priority(&self, task_ref: TaskRef, priority: u32) {
+        let task = unsafe { &*task_ref.as_ptr() };
+        task.update_priority(priority);
+    }
+
+    /// spawn a new task in `Executor`
+    pub fn spawn(&'static self, fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>, priority: u32, task_type: TaskType) -> TaskRef {
+        let task = Task::new(&self, fut, priority, task_type);
+        let task_ref = task.as_ref();
+        self.run_queue[priority as usize].enqueue(task_ref);
+        self.priority.fetch_min(priority, Ordering::Relaxed);
+        task_ref
+    }
+
+    /// fetch task which has the highest priority
+    pub fn fetch(&mut self, tid: usize) -> Option<TaskRef> {
+        assert!(tid < 4);
+        if let Some(task_ref) = self.wake_queue.dequeue() {
+            let task = unsafe { &*task_ref.as_ptr() };
+            let priority = task.priority.load(Ordering::Relaxed);
+            self.priority.store(priority, Ordering::Relaxed);
+            self.currents[tid] = Some(task_ref);
+            return Some(task_ref);
+        }
+        for q in &self.run_queue {
+            if let Some(task_ref) = q.dequeue() {
+                let task = unsafe { &*task_ref.as_ptr() };
+                let priority = task.priority.load(Ordering::Relaxed);
+                self.priority.store(priority, Ordering::Relaxed);
+                self.currents[tid] = Some(task_ref);
+                return Some(task_ref);
+            }
+        }
+        None
+    }
+
+    ///
+    pub fn add_wait_tid(&mut self, tid: usize) {
+        for i in self.threads {
+            if self.threads[i] != usize::MAX {
+                self.threads[i] = tid;
+            }
+        }
+    }
+
+    /// Insert the task ptr into the pending set
+    /// This function will only be used when the task is pengding in the same privilege level.
+    /// For example, waiting for the message in user level message queue.
+    pub fn pending(&self, task_ref: TaskRef) {
+        self.pending_set.lock().insert(task_ref).unwrap();
+    }
+
+    // ///
+    // pub fn wake(&self, task: Arc<Task>) {
+    //     let priority = task.priority.load(Ordering::Relaxed);
+    //     self.run_queue[priority as usize].enqueue(task);
+    //     self.priority.fetch_min(priority, Ordering::Relaxed);
+    // }
+
     /// wake a task according to it's pointer
     pub fn wake_task_from_ref(&self, task_ref: TaskRef) {
+        if self.pending_set.lock().contains(&task_ref) {
+            self.pending_set.lock().remove(&task_ref);
+        }
         let task = unsafe { &*task_ref.as_ptr() };
         let priority = task.priority.load(Ordering::Relaxed);
         self.priority.fetch_min(priority, Ordering::Relaxed);
         self.wake_queue.enqueue(task_ref);
-    }
-
-    /// spawn a new task in `Executor`
-    pub fn spawn(&'static self, task: Arc<Task>) {
-        task.executor.store(Some(self));
-        let priority = task.priority.load(Ordering::Relaxed);
-        self.run_queue[priority as usize].enqueue(task);
-        self.priority.fetch_min(priority, Ordering::Relaxed);
-    }
-
-    /// fetch task which has the highest priority
-    pub fn fetch(&mut self, tid: usize) -> Option<Arc<Task>> {
-        assert!(tid < 4);
-        if let Some(task_ref) = self.wake_queue.dequeue() {
-            let task = unsafe { Arc::from_raw(task_ref.as_ptr()) };
-            let priority = task.priority.load(Ordering::Relaxed);
-            self.priority.fetch_min(priority, Ordering::Relaxed);
-            self.currents[tid] = Some(task.clone());
-            return Some(task);
-        }
-        let mut task = None;
-        for q in &self.run_queue {
-            if let Some(t) = q.dequeue() {
-                let priority = t.priority.load(Ordering::Relaxed);
-                self.priority.fetch_min(priority, Ordering::Relaxed);
-                self.currents[tid] = Some(t.clone());
-                task = Some(t);
-                break;
-            }
-        }
-        task
-    }
-    ///
-    pub fn wake(&mut self, task: Arc<Task>) {
-        let priority = task.priority.load(Ordering::Relaxed);
-        self.run_queue[priority as usize].enqueue(task);
-        self.priority.fetch_min(priority, Ordering::Relaxed);
     }
 }

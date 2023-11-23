@@ -7,5 +7,6 @@ edition = "2021"
 
 [dependencies]
 executor = { path = "../rafos-executor", package = "rafos-executor"}
-runtime = { path = "../rafos-libs/rafos-runtime", package = "rafos-runtime"}
+runtime = { path = "../rafos-libs/rafos-runtime", package = "rafos-runtime", features = ["std"]}
 libloading = "0.8"
+sys-info = "0.9"
