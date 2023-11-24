@@ -9,7 +9,7 @@ QEMU := qemu-riscv64
 OBJDUMP := riscv64-unknown-linux-gnu-objdump
 
 runtime:
-	@cd ../rafos-libs && make build
+	@cd ../rafos-libs && make build FEATURE=std
 
 elf: $(APPS)
 	@cargo build --$(MODE)

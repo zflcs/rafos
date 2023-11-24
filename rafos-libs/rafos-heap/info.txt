@@ -1,5 +1,0 @@
-name:librafos_heap.so
-version:1
-api_version:1
-exported_symbols:rafos_alloc,rafos_dealloc
-dependence:

@@ -1,4 +1,4 @@
-#![no_std]
+#![cfg_attr(not(feature = "std"), no_std)]
 #![no_main]
 #![feature(lang_items, alloc_error_handler)]
 #![allow(internal_features)]
