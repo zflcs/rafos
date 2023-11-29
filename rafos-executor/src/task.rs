@@ -1,16 +1,28 @@
 //! Coroutine Control Block structures for more control.
 //!
 
-use crate::{executor::Executor, waker};
+use super::{executor::Executor, waker};
 use alloc::{boxed::Box, sync::Arc};
 use core::{
     future::Future,
     pin::Pin,
     ptr::NonNull,
     sync::atomic::{AtomicU32, Ordering},
-    task::{Context, Poll},
+    task::{Context, Poll}
 };
 use crossbeam::atomic::AtomicCell;
+
+/// 
+#[repr(u32)]
+pub enum TaskState {
+    ///
+    Ready = 1 << 0,
+    /// 
+    Running = 1 << 1,
+    ///
+    Pending = 1 << 2
+}
+
 
 /// The pointer of `Task`
 #[repr(transparent)]
@@ -43,6 +55,10 @@ pub enum TaskType {
     ///
     KernelSche,
     ///
+    Syscall,
+    /// 
+    AsyncSyscall,
+    ///
     Other,
 }
 
@@ -50,6 +66,8 @@ pub enum TaskType {
 #[repr(C)]
 pub struct Task {
     pub(crate) executor: &'static Executor,
+    /// 
+    pub state: AtomicU32,
     ///
     pub priority: AtomicU32,
     ///
@@ -64,14 +82,16 @@ impl Task {
         executor: &'static Executor,
         fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>,
         priority: u32,
-        task_type: TaskType
-    ) -> Arc<Self> {
-        Arc::new(Self {
+        task_type: TaskType,
+    ) -> TaskRef {
+        let task = Arc::new(Self {
             executor,
+            state: AtomicU32::new(TaskState::Ready as _),
             priority: AtomicU32::new(priority),
             task_type,
             fut: AtomicCell::new(fut),
-        })
+        });
+        task.as_ref()
     }
 
     /// Update priority
@@ -108,11 +128,15 @@ pub fn execute(task_ref: TaskRef) -> Option<TaskRef> {
         let waker = waker::from_task(task_ref);
         let mut cx = Context::from_waker(&waker);
         let task = Task::from_ref(task_ref);
+        task.state.store(TaskState::Running as _, Ordering::Relaxed);
         let fut = &mut *task.fut.as_ptr();
         let mut future = Pin::new_unchecked(fut.as_mut());
         match future.as_mut().poll(&mut cx) {
             Poll::Ready(_) => { None },
-            Poll::Pending => { Some(task.as_ref()) },
+            Poll::Pending => { 
+                task.state.store(TaskState::Pending as _, Ordering::Relaxed);
+                Some(task.as_ref()) 
+            },
         }
     }
 }

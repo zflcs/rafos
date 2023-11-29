@@ -1,4 +1,4 @@
-.align 3
+.align 2
 .section .module_info
 .global smodule_info
 .global emodule_info

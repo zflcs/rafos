@@ -9,14 +9,17 @@ QEMU := qemu-riscv64
 OBJDUMP := riscv64-unknown-linux-gnu-objdump
 
 runtime:
-	@cd ../rafos-libs && make build FEATURE=std
+	@cd ../rafos-libs && make build
 
 elf: $(APPS)
 	@cargo build --$(MODE)
 
 test: elf runtime
 	@$(foreach elf, $(ELFS), $(OBJDUMP) -S -t $(elf) > $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.asm, $(elf));)
-	$(foreach elf, $(ELFS), $(QEMU) -cpu rv64 $(elf))
+	# $(foreach elf, $(ELFS), $(QEMU) -cpu rv64 $(elf))
+	for elf in $(ELFS); do \
+	 $(QEMU) -cpu rv64 $$elf; \
+	done
 
 
 

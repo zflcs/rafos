@@ -19,7 +19,7 @@ fn insert_info() -> Result<()> {
 
     writeln!(
         f,
-r#".align 3
+r#".align 2
 .section .module_info
 .global smodule_info
 .global emodule_info

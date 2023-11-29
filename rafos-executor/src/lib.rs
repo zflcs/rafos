@@ -4,6 +4,7 @@
 #![feature(sync_unsafe_cell)]
 #![feature(associated_type_bounds)]
 #![warn(missing_docs)]
+#![feature(allocator_api)]
 
 extern crate alloc;
 

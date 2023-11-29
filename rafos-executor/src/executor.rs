@@ -1,9 +1,7 @@
 use core::{sync::atomic::{AtomicU32, Ordering}, future::Future};
 
 use alloc::boxed::Box;
-use crate::{queue::*, Task, TaskRef, PRIO_LEVEL, TaskType};
-use heapless::FnvIndexSet;
-use spin::Mutex;
+use super::{queue::*, Task, TaskRef, PRIO_LEVEL, TaskType, TaskState};
 
 /// The `Executor` of `async` runtime.
 #[repr(C)]
@@ -18,8 +16,6 @@ pub struct Executor {
     priority: AtomicU32,
     /// these queues store tasks according to their priority.
     run_queue: [Queue; PRIO_LEVEL],
-    /// this set stores the pending tasks.
-    pending_set: Mutex<FnvIndexSet<TaskRef, 32>>,
     /// current task
     currents: [Option<TaskRef>; 10],
     /// thread ids
@@ -28,11 +24,10 @@ pub struct Executor {
 
 impl Executor {
     ///
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             wake_queue: Queue::EMPTY,
             run_queue: [Queue::EMPTY; 8],
-            pending_set: Mutex::new(FnvIndexSet::new()),
             // currents: array_init::array_init(|_| None),
             currents: [None; 10],
             threads: [usize::MAX; 10],
@@ -48,8 +43,7 @@ impl Executor {
 
     /// spawn a new task in `Executor`
     pub fn spawn(&'static self, fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>, priority: u32, task_type: TaskType) -> TaskRef {
-        let task = Task::new(&self, fut, priority, task_type);
-        let task_ref = task.as_ref();
+        let task_ref = Task::new(&self, fut, priority, task_type);
         self.run_queue[priority as usize].enqueue(task_ref);
         self.priority.fetch_min(priority, Ordering::Relaxed);
         task_ref
@@ -57,7 +51,7 @@ impl Executor {
 
     /// fetch task which has the highest priority
     pub fn fetch(&mut self, tid: usize) -> Option<TaskRef> {
-        assert!(tid < 4);
+        assert!(tid < 10);
         if let Some(task_ref) = self.wake_queue.dequeue() {
             let task = unsafe { &*task_ref.as_ptr() };
             let priority = task.priority.load(Ordering::Relaxed);
@@ -86,13 +80,6 @@ impl Executor {
         }
     }
 
-    /// Insert the task ptr into the pending set
-    /// This function will only be used when the task is pengding in the same privilege level.
-    /// For example, waiting for the message in user level message queue.
-    pub fn pending(&self, task_ref: TaskRef) {
-        self.pending_set.lock().insert(task_ref).unwrap();
-    }
-
     // ///
     // pub fn wake(&self, task: Arc<Task>) {
     //     let priority = task.priority.load(Ordering::Relaxed);
@@ -102,12 +89,16 @@ impl Executor {
 
     /// wake a task according to it's pointer
     pub fn wake_task_from_ref(&self, task_ref: TaskRef) {
-        if self.pending_set.lock().contains(&task_ref) {
-            self.pending_set.lock().remove(&task_ref);
-        }
         let task = unsafe { &*task_ref.as_ptr() };
+        task.state.store(TaskState::Ready as _, Ordering::Relaxed);
         let priority = task.priority.load(Ordering::Relaxed);
         self.priority.fetch_min(priority, Ordering::Relaxed);
         self.wake_queue.enqueue(task_ref);
+    }
+
+    /// get the current task on the thread
+    pub fn current_task(&self, tid: usize) -> TaskRef {
+        assert!(tid < 10);
+        self.currents[tid].unwrap()
     }
 }

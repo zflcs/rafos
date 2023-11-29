@@ -7,21 +7,6 @@ use spin::Lazy;
 
 pub const HEAP_SIZE: usize = 0x80_000;
 
-#[no_mangle]
-pub unsafe extern "C" fn rafos_alloc(size: usize, align: usize) -> *mut u8 {
-    HEAP.lock()
-        .alloc(Layout::from_size_align(size, align).unwrap())
-        .ok()
-        .map_or(0 as *mut u8, |allocation| allocation.as_ptr())
-}
-
-#[no_mangle]
-pub unsafe extern "C" fn rafos_dealloc(ptr: *mut u8, size: usize, align: usize) {
-    HEAP.lock().dealloc(
-        NonNull::new_unchecked(ptr), 
-        Layout::from_size_align(size, align).unwrap()
-    )
-}
 
 #[no_mangle]
 #[link_section = ".data.heap"]
@@ -40,6 +25,7 @@ static mut MEMORY: [u8; HEAP_SIZE] = [0u8; HEAP_SIZE];
 struct Global;
 
 #[global_allocator]
+#[no_mangle]
 static GLOBAL: Global = Global;
 
 unsafe impl GlobalAlloc for Global {

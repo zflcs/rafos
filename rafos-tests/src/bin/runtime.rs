@@ -1,6 +1,6 @@
 
 
-
+#![feature(allocator_api)]
 use core::future::Future;
 use core::pin::Pin;
 use core::task::Context;
@@ -10,11 +10,31 @@ extern crate sys_info;
 
 
 fn main() {
-    println!("cpu num {}", sys_info::cpu_num().unwrap());
-    println!("cpu speed {}", sys_info::cpu_speed().unwrap());
+    // println!("cpu num {}", sys_info::cpu_num().unwrap());
+    // println!("cpu speed {}", sys_info::cpu_speed().unwrap());
     // spawn_time_test(100);
     // switch_time_test(100);
-    wake_time_test(100);
+    // wake_time_test(5);
+    box_drop_test();
+
+}
+
+#[allow(unused)]
+fn box_drop_test() {
+    
+    let lib = unsafe { 
+        libloading::Library::new("/home/zfl/u-intr/rafos/target/riscv64gc-unknown-linux-gnu/release/librafos_runtime.so") 
+    }.unwrap();
+    let spawn: libloading::Symbol<extern fn(fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>, priority: u32, task_type: TaskType) -> TaskRef> = 
+        unsafe { lib.get(b"spawn") }.unwrap();
+    let poll_future: libloading::Symbol<extern fn()> = unsafe { lib.get(b"poll_future") }.unwrap();
+    for _ in 0..10 {
+        let a = Box::new(test());
+        let raw_ptr = Box::into_raw(a);
+        println!("raw_ptr {:#X}", raw_ptr as *const usize as usize);
+        spawn(unsafe { Box::from_raw(raw_ptr) }, 0, TaskType::Other);
+        poll_future();
+    }
 }
 
 #[allow(unused)]
@@ -48,6 +68,7 @@ fn switch_time_test(num: usize) {
         // println!("{:?}", spawn(Box::new(Help::new()), 0, TaskType::KernelSche));
         poll_future();
     }
+    
     // println!("poll future end");
 }
 
@@ -95,7 +116,7 @@ impl Future for Help {
 }
 
 async fn test() -> i32 {
-    // println!("into async test");
+    println!("into async test");
     0
 }
 
