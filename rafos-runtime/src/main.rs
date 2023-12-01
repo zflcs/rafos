@@ -79,3 +79,8 @@ use core::future::Future;
 pub fn test(_a: *mut (dyn Future<Output = i32> + 'static + Send + Sync)) {
     
 }
+
+#[no_mangle]
+pub fn ttttttt() {
+    
+}

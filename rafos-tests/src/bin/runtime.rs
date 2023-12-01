@@ -23,7 +23,7 @@ fn main() {
 fn box_drop_test() {
     
     let lib = unsafe { 
-        libloading::Library::new("/home/zfl/u-intr/rafos/target/riscv64gc-unknown-linux-gnu/release/librafos_runtime.so") 
+        libloading::Library::new("/home/zfl/workspace/rafos/target/riscv64gc-unknown-linux-gnu/release/librafos_runtime.so") 
     }.unwrap();
     let spawn: libloading::Symbol<extern fn(fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>, priority: u32, task_type: TaskType) -> TaskRef> = 
         unsafe { lib.get(b"spawn") }.unwrap();

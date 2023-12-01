@@ -1,8 +1,8 @@
 run:
-	make -C os run
+	make -C rafos-kernel run
 
 disasm:
-	make -C os disasm
+	make -C rafos-kernel disasm
 
 test:
 	make -C rafos-tests test

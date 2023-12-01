@@ -3,4 +3,4 @@ target = "riscv64gc-unknown-none-elf"
 target-dir = "../target"
 
 [target.riscv64gc-unknown-none-elf]
-rustflags = ["-Clink-args=-Tlinker.ld"]
+rustflags = ["-Clink-args=-Tlinker.ld", "-C", "link-dead-code=yes"]
