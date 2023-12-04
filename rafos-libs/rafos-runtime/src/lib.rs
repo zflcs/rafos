@@ -1,7 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(lang_items, alloc_error_handler)]
-#![allow(internal_features)]
+#![allow(internal_features, non_snake_case)]
 
 mod heap;
 extern crate alloc;
@@ -12,12 +12,14 @@ core::arch::global_asm!(include_str!("info.asm"));
 
 static mut EXECUTOR: Executor = Executor::new();
 
-
 pub mod lang_item {
     ///
     #[lang = "eh_personality"]
     #[no_mangle]
     pub fn rust_eh_personality() {}
+
+    #[no_mangle]
+    pub fn _Unwind_Resume() {}
 
     /// not_kernel panic
     #[panic_handler]
@@ -49,3 +51,20 @@ pub fn poll_future() {
 pub fn wake_task(task_ref: TaskRef) {
     executor::wake_task(task_ref);
 }
+
+extern "C" {
+    fn put_str(ptr: *const u8, len: usize);
+}
+
+#[no_mangle]
+pub fn put_test() {
+    print("19990109\n");
+}
+
+pub fn print(s: &str) {
+    let byte = s.as_bytes();
+    unsafe { put_str(byte.as_ptr(), byte.len()) };
+}
+
+
+

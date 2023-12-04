@@ -1,5 +1,5 @@
 name:librafos_runtime.so
 version:1
 api_version:1
-exported_symbols:entry,spawn
+exported_symbols:spawn,poll_future,wake_task,put_test
 dependence:

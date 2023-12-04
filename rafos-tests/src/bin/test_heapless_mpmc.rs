@@ -7,8 +7,10 @@ const N: u32 = 2;
 
 static Q: MpMcQueue<u32, 2> = MpMcQueue::new();
 
+use executor::TaskRef;
 fn main() {
 
+    println!("{}", core::mem::size_of::<MpMcQueue<TaskRef, 32>>());
 
     let (s, r) = mpsc::channel();
     thread::scope(|scope| {

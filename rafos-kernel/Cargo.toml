@@ -7,3 +7,35 @@ edition = "2021"
 
 [dependencies]
 riscv = "0.10"
+bitflags = "2.4.1"
+buddy_system_allocator = "0.9.0"
+log = "0.4"
+spin = "0.9"
+xmas-elf = "0.9.1"
+rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
+sbi-rt = { version = "0.0.2", features = ["legacy"] }
+virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5", optional = true }
+
+console = { path = "../rafos-crates/rafos-console", package = "rafos-console" }
+config = { path = "../rafos-crates/rafos-config", package = "rafos-config", features = ["board_qemu"] }
+errno = { path = "../rafos-crates/rafos-errno", package = "rafos-errno" }
+executor = { path = "../rafos-crates/rafos-executor", package = "rafos-executor" }
+time = { path = "../rafos-crates/rafos-time", package = "rafos-time" }
+
+easy-fs = { path = "../rafos-crates/easy-fs" }
+
+[dependencies.smoltcp]
+version = "0.10.0"
+default-features = false
+features = [
+  "alloc", "log",   # no std
+  "medium-ethernet",
+  "proto-ipv4",
+  "socket-raw", "socket-icmp", "socket-udp", "socket-tcp", "socket-dns",
+  "async"
+]
+
+[features]
+
+board_qemu = ["virtio-drivers"]
+default = ["board_qemu"]

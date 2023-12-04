@@ -1,45 +1,29 @@
-use buddy_system_allocator::LockedHeap;
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    ptr::NonNull,
-};
-use spin::Lazy;
+use core::alloc::{GlobalAlloc, Layout};
 
-pub const HEAP_SIZE: usize = 0x80_000;
+// Kernel must support thess function.
+extern "C" {
+    fn alloc(size: usize, align: usize) -> *mut u8;
+    fn dealloc(ptr: *mut u8, size: usize, align: usize);
+}
 
-
-#[no_mangle]
-#[link_section = ".data.heap"]
-pub static mut HEAP: Lazy<LockedHeap<32>> = Lazy::new(|| {
-    let heap = LockedHeap::new();
-    unsafe {
-        heap.lock().init(MEMORY.as_ptr() as usize, HEAP_SIZE);
-    }
-    heap
-});
-
-#[no_mangle]
-#[link_section = ".bss.memory"]
-static mut MEMORY: [u8; HEAP_SIZE] = [0u8; HEAP_SIZE];
-
-struct Global;
-
+///
 #[global_allocator]
-#[no_mangle]
 static GLOBAL: Global = Global;
 
+struct Global;
 unsafe impl GlobalAlloc for Global {
     #[inline]
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        HEAP.lock()
-            .alloc(layout)
-            .ok()
-            .map_or(0 as *mut u8, |allocation| allocation.as_ptr())
+        let size = layout.size();
+        let align = layout.align();
+        alloc(size, align)
     }
 
     #[inline]
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
-        HEAP.lock().dealloc(NonNull::new_unchecked(ptr), layout)
+        let size = layout.size();
+        let align = layout.align();
+        dealloc(ptr, size, align);
     }
 }
 
