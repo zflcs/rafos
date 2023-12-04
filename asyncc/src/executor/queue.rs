@@ -16,11 +16,13 @@ impl Queue {
     }
 
     ///
+    #[inline(always)]
     pub fn dequeue(&self) -> Option<TaskRef> {
         self.0.pop()
     }
 
     ///
+    #[inline(always)]
     pub fn enqueue(&self, task_ref: TaskRef) {
         self.0.push(task_ref);
     }

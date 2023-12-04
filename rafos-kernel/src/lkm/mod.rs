@@ -1,8 +1,9 @@
+#[allow(unused)]
 pub mod const_reloc;
 pub mod manager;
 pub mod structs;
 pub mod api;
-use executor::*;
+use asyncc::*;
 pub use manager::LKM_MANAGER;
 
 use core::future::Future;
@@ -36,10 +37,3 @@ pub fn wake_task(task_ref: TaskRef) {
     }
 }
 
-pub fn put_test() {
-    let put_test_ptr = LKM_MANAGER.lock().resolve_symbol("put_test").unwrap();
-    unsafe {
-        let put_test_fn: fn() = core::mem::transmute(put_test_ptr);
-        put_test_fn();
-    }
-}

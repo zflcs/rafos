@@ -87,6 +87,13 @@ impl MM {
             brk: VirtAddr::from(0),
             exported_symbols: BTreeMap::new(),
         };
+        mm.alloc_write_vma(
+            None,
+            VirtAddr::from(config::ASYNCC_ADDR),
+            VirtAddr::from(config::ASYNCC_ADDR + config::ASYNCC_LEN),
+            VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
+        )?;
+
         mm.page_table.map(
             VirtAddr::from(TRAMPOLINE).into(),
             PhysAddr::from(strampoline as usize).into(),

@@ -505,7 +505,7 @@ impl ModuleManager {
                             mm.page_table.map(vpn, ppn, (flags| VMFlags::USER).into());
                         }
                         let src_ptr = mm.translate(new_va_start).unwrap().0;
-                        let src_slice = unsafe { core::slice::from_raw_parts(src_ptr as *const u8, len) };
+                        // let src_slice = unsafe { core::slice::from_raw_parts(src_ptr as *const u8, len) };
                         // log::debug!("{:X?}", &src_slice[0x12ca..0x12ca + 16]);
                         let vma = VMArea::new(
                             vpn_range.get_start().into(),
@@ -513,7 +513,7 @@ impl ModuleManager {
                             flags | VMFlags::USER,
                             Vec::new()
                         ).unwrap();
-                        mm.add_vma(vma);
+                        mm.add_vma(vma)?;
                     }
                     new_va_start = new_va_end;
                 }

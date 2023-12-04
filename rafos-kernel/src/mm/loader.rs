@@ -84,7 +84,7 @@ pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult {
 
     // Set user entry
     mm.entry = VirtAddr::from(elf_hdr.pt2.entry_point() as usize);
-    LKM_MANAGER.lock().link_module("libsharedscheduler.so", mm, &elf);
+    LKM_MANAGER.lock().link_module("libsharedscheduler.so", mm, &elf)?;
     
     
     Ok(())

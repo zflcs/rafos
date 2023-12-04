@@ -1,5 +1,6 @@
 use core::{sync::atomic::{AtomicU32, Ordering}, future::Future};
 
+use alloc::boxed::Box;
 use super::{queue::*, Task, TaskRef, PRIO_LEVEL, TaskType, TaskState};
 
 /// The `Executor` of `async` runtime.
@@ -27,6 +28,7 @@ impl Executor {
         Self {
             wake_queue: Queue::EMPTY,
             run_queue: [Queue::EMPTY; 8],
+            // currents: array_init::array_init(|_| None),
             currents: [None; 10],
             threads: [usize::MAX; 10],
             priority: AtomicU32::new(u32::MAX),
@@ -40,7 +42,7 @@ impl Executor {
     }
 
     /// spawn a new task in `Executor`
-    pub fn spawn(&'static self, fut: impl Future<Output = i32> + 'static + Send + Sync, priority: u32, task_type: TaskType) -> TaskRef {
+    pub fn spawn(&'static self, fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>, priority: u32, task_type: TaskType) -> TaskRef {
         let task_ref = Task::new(&self, fut, priority, task_type);
         self.run_queue[priority as usize].enqueue(task_ref);
         self.priority.fetch_min(priority, Ordering::Relaxed);
@@ -48,6 +50,7 @@ impl Executor {
     }
 
     /// fetch task which has the highest priority
+    #[inline(always)]
     pub fn fetch(&mut self, tid: usize) -> Option<TaskRef> {
         assert!(tid < 10);
         if let Some(task_ref) = self.wake_queue.dequeue() {
@@ -77,6 +80,13 @@ impl Executor {
             }
         }
     }
+
+    // ///
+    // pub fn wake(&self, task: Arc<Task>) {
+    //     let priority = task.priority.load(Ordering::Relaxed);
+    //     self.run_queue[priority as usize].enqueue(task);
+    //     self.priority.fetch_min(priority, Ordering::Relaxed);
+    // }
 
     /// wake a task according to it's pointer
     pub fn wake_task_from_ref(&self, task_ref: TaskRef) {

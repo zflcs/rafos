@@ -35,7 +35,7 @@ pub fn kernel_activate() {
 fn new_kernel() -> Result<MM, KernelError> {
     let mut mm = MM::new()?;
 
-    mm.exported_symbols = kernel_rt();
+    // mm.exported_symbols = kernel_rt();
     // Map kernel .text section
     mm.alloc_write_vma(
         None,

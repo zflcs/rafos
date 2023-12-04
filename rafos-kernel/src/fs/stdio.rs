@@ -5,6 +5,8 @@ pub struct Stdin;
 
 pub struct Stdout;
 
+pub struct Stderr;
+
 impl File for Stdin {
     fn read(&self, mut user_buf: UserBuffer) -> Result<usize, isize> {
         assert_eq!(user_buf.len(), 1);
@@ -43,6 +45,35 @@ impl File for Stdout {
     fn write(&self, user_buf: UserBuffer) -> Result<usize, isize> {
         for buffer in user_buf.buffers.iter() {
             console::print!("{}", core::str::from_utf8(*buffer).unwrap());
+        }
+        Ok(user_buf.len())
+    }
+    
+    fn awrite(&self, _buf: UserBuffer, _pid: usize, _key: usize) -> Result<usize, isize> {
+        unimplemented!();
+    }
+    
+    fn aread(&self, _buf: UserBuffer, _cid: usize, _pid: usize, _key: usize) -> Result<usize, isize> {
+        unimplemented!();
+    }
+
+    fn readable(&self) -> bool {
+        false
+    }
+
+    fn writable(&self) -> bool {
+        true
+    }
+}
+
+
+impl File for Stderr {
+    fn read(&self, _user_buf: UserBuffer) -> Result<usize, isize> {
+        panic!("Cannot read from stdout!");
+    }
+    fn write(&self, user_buf: UserBuffer) -> Result<usize, isize> {
+        for buffer in user_buf.buffers.iter() {
+            log::error!("{}", core::str::from_utf8(*buffer).unwrap());
         }
         Ok(user_buf.len())
     }

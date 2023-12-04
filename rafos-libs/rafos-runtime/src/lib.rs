@@ -56,11 +56,6 @@ extern "C" {
     fn put_str(ptr: *const u8, len: usize);
 }
 
-#[no_mangle]
-pub fn put_test() {
-    print("19990109\n");
-}
-
 pub fn print(s: &str) {
     let byte = s.as_bytes();
     unsafe { put_str(byte.as_ptr(), byte.len()) };

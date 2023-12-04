@@ -24,9 +24,12 @@ mod error;
 mod fs;
 mod device;
 mod timer;
+mod task;
+mod trampoline;
 
 pub use frame_allocator::*;
 pub use error::*;
+use asyncc::*;
 
 use core::sync::atomic::{Ordering, AtomicUsize};
 use config::CPU_NUM;
@@ -118,7 +121,7 @@ pub fn rust_main_init(hart_id: usize) -> ! {
     mm::init();
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
     fs::list_apps();
-    lkm::init();
+    // lkm::init();
     
     // net::init();
     // device::init();
@@ -147,6 +150,9 @@ pub fn rust_main_init_other(hart_id: usize) -> ! {
     rust_main(hart_id)
 }
 
+static mut EXECUTOR: Executor = Executor::new();
+
+
 #[no_mangle]
 pub fn rust_main(_hart_id: usize) -> ! {
     // lkm::spawn(alloc::boxed::Box::new(async {
@@ -158,9 +164,24 @@ pub fn rust_main(_hart_id: usize) -> ! {
     // // lkm::put_test();
     // lkm::poll_future();
     // box_drop_test(10000);
-    // spawn_time_test(10000);
+    // test::spawn_time_test(10000);
     // switch_time_test(10000);
     // wake_time_test(10000);
+    {
+        asyncc::Asyncc::reset(unsafe { &EXECUTOR });
+    }
+    for _ in 0..10 {
+        use alloc::boxed::Box;
+        asyncc::Asyncc::spawn(Box::new(async {
+            log::debug!("async test");
+            0
+        }), 0, asyncc::TaskType::Other);
+    }
+    unsafe {
+        
+        asyncc::Asyncc::set_cause(asyncc::Cause::Finish);
+        trampoline::asyncc_entry();
+    }
     panic!("Unreachable in rust_main!");
 }
 
@@ -177,24 +198,25 @@ mod test {
 
     use time::*;
     #[allow(unused)]
-    fn box_drop_test(num: usize) {
+    pub fn box_drop_test(num: usize) {
         use alloc::boxed::Box;
         for _ in 0..num {
             let a = Box::new(test());
             let raw_ptr = Box::into_raw(a);
             log::debug!("raw_ptr {:#X}", raw_ptr as *const usize as usize);
-            crate::lkm::spawn(unsafe { Box::from_raw(raw_ptr) }, 0, executor::TaskType::Other);
+            crate::lkm::spawn(unsafe { Box::from_raw(raw_ptr) }, 0, asyncc::TaskType::Other);
             crate::lkm::poll_future();
         }
     }
     
     #[allow(unused)]
-    fn spawn_time_test(num: usize) {
+    pub fn spawn_time_test(num: usize) {
+        log::debug!("spawn_time_test");
         use alloc::{boxed::Box, vec::Vec};
         let mut spawn_times = Vec::new();
         for _ in 0..num {
             let start = Instant::now();
-            crate::lkm::spawn(Box::new(test()), 2, executor::TaskType::KernelSche);
+            crate::lkm::spawn(Box::new(test()), 2, asyncc::TaskType::KernelSche);
             spawn_times.push(start.elapsed().as_nanos());
         }
         crate::lkm::poll_future();
@@ -202,10 +224,10 @@ mod test {
     }
     
     #[allow(unused)]
-    fn switch_time_test(num: usize) {
+    pub fn switch_time_test(num: usize) {
         use alloc::boxed::Box;
         for _ in 0..num {
-            crate::lkm::spawn(Box::new(Help::new()), 0, executor::TaskType::KernelSche);
+            crate::lkm::spawn(Box::new(Help::new()), 0, asyncc::TaskType::KernelSche);
             // println!("{:?}", spawn(Box::new(Help::new()), 0, TaskType::KernelSche));
             crate::lkm::poll_future();
         }
@@ -214,10 +236,10 @@ mod test {
     }
     
     #[allow(unused)]
-    fn wake_time_test(num: usize) {
+    pub fn wake_time_test(num: usize) {
         use alloc::boxed::Box;
         for _ in 0..num {
-            let task_ref = crate::lkm::spawn(Box::new(Help::new()), 0, executor::TaskType::Other);
+            let task_ref = crate::lkm::spawn(Box::new(Help::new()), 0, asyncc::TaskType::Other);
             crate::lkm::poll_future();
             crate::lkm::wake_task(task_ref);
             crate::lkm::poll_future();

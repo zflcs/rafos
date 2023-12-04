@@ -1,8 +1,11 @@
 // mod pipe;
 pub mod stdio;
 pub mod inode;
+pub mod fd;
 
 pub use inode::*;
+pub use stdio::*;
+pub use fd::*;
 
 use crate::mm::UserBuffer;
 use core::{

@@ -1,6 +1,8 @@
 //! Coroutine Control Block structures for more control.
 //!
 
+use crate::Asyncc;
+
 use super::{executor::Executor, waker};
 use alloc::{boxed::Box, sync::Arc};
 use core::{
@@ -80,7 +82,7 @@ impl Task {
     /// Create a new Task, in not-spawned state.
     pub fn new(
         executor: &'static Executor,
-        fut: impl Future<Output = i32> + 'static + Send + Sync,
+        fut: Box<dyn Future<Output = i32> + 'static + Send + Sync>,
         priority: u32,
         task_type: TaskType,
     ) -> TaskRef {
@@ -89,7 +91,7 @@ impl Task {
             state: AtomicU32::new(TaskState::Ready as _),
             priority: AtomicU32::new(priority),
             task_type,
-            fut: AtomicCell::new(Box::new(fut)),
+            fut: AtomicCell::new(fut),
         });
         task.as_ref()
     }
@@ -123,6 +125,7 @@ pub fn wake_task(task_ref: TaskRef) {
 }
 
 /// 
+#[inline(always)]
 pub fn execute(task_ref: TaskRef) -> Option<TaskRef> {
     unsafe {
         let waker = waker::from_task(task_ref);
@@ -132,8 +135,11 @@ pub fn execute(task_ref: TaskRef) -> Option<TaskRef> {
         let fut = &mut *task.fut.as_ptr();
         let mut future = Pin::new_unchecked(fut.as_mut());
         match future.as_mut().poll(&mut cx) {
-            Poll::Ready(_) => { None },
+            Poll::Ready(_) => { 
+                Asyncc::set_cause(crate::Cause::Finish);
+                None },
             Poll::Pending => { 
+                Asyncc::set_cause(crate::Cause::Await);
                 task.state.store(TaskState::Pending as _, Ordering::Relaxed);
                 Some(task.as_ref()) 
             },

@@ -10,5 +10,5 @@ crossbeam = { version = "0.8", default-features = false, features = ["alloc"] }
 log = "0.4.17"
 array-init = "2.0.0"
 heapless = { version = "0.8", features = ["mpmc_large"] }
-
+config = { path = "../rafos-crates/rafos-config", package = "rafos-config", features = ["board_qemu"] }
 asyncc-pac = { path = "./asyncc-pac"}

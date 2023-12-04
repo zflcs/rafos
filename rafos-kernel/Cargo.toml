@@ -19,9 +19,9 @@ virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4e
 console = { path = "../rafos-crates/rafos-console", package = "rafos-console" }
 config = { path = "../rafos-crates/rafos-config", package = "rafos-config", features = ["board_qemu"] }
 errno = { path = "../rafos-crates/rafos-errno", package = "rafos-errno" }
-executor = { path = "../rafos-crates/rafos-executor", package = "rafos-executor" }
+# executor = { path = "../rafos-crates/rafos-executor", package = "rafos-executor" }
 time = { path = "../rafos-crates/rafos-time", package = "rafos-time" }
-
+asyncc = { path = "../asyncc" }
 easy-fs = { path = "../rafos-crates/easy-fs" }
 
 [dependencies.smoltcp]
