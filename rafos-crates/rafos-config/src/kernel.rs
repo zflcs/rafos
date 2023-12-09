@@ -12,6 +12,8 @@ pub const MEMORY_END: usize = 0x84000000;
 
 /// page size: 4K
 pub const PAGE_SIZE: usize = 0x1000;
+/// page size: 4K
+pub const PAGE_MASK: usize = !0x0FFF;
 ///
 pub const PAGE_SIZE_BITS: usize = 0xc;
 /// the base address of trampoline
@@ -28,6 +30,9 @@ pub const USER_MAX_PAGES: usize = (LOW_MAX_VA + 1) >> PAGE_SIZE_BITS;
 
 /// Maximum virtual memory areas in an address space
 pub const MAX_MAP_COUNT: usize = 256;
+
+///
+pub const USER_HEAP_PTR: usize = LOW_MAX_VA - PAGE_SIZE * 2 + 1;
 
 /// 
 pub const USER_STACK_BASE: usize = LOW_MAX_VA + 1;

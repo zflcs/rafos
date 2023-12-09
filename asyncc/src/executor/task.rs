@@ -37,6 +37,7 @@ unsafe impl Send for TaskRef where &'static Task: Send {}
 unsafe impl Sync for TaskRef where &'static Task: Sync {}
 
 impl TaskRef {
+
     /// Safety: The pointer must have been obtained with `Task::as_ptr`
     pub(crate) unsafe fn from_ptr(ptr: *const Task) -> Self {
         Self {
@@ -56,6 +57,10 @@ impl TaskRef {
 pub enum TaskType {
     ///
     KernelSche,
+    ///
+    KernelProcess,
+    ///
+    Process,
     ///
     Syscall,
     /// 

@@ -5,7 +5,7 @@ pub type W = crate::W<STATUS_SPEC>;
 #[doc = "Field `code` reader - The code of cause"]
 pub type CODE_R = crate::FieldReader<u32>;
 #[doc = "Field `code` writer - The code of cause"]
-pub type CODE_W<'a, REG, const O: u8> = crate::FieldWriter<'a, REG, 30, O, u32>;
+pub type CODE_W<'a, REG> = crate::FieldWriter<'a, REG, 30, u32>;
 #[doc = "Field `mode` reader - The mode of execution flow change"]
 pub type MODE_R = crate::FieldReader<MODE_A>;
 #[doc = "The mode of execution flow change\n\nValue on reset: 0"]
@@ -33,7 +33,7 @@ impl crate::FieldSpec for MODE_A {
 impl MODE_R {
     #[doc = "Get enumerated values variant"]
     #[inline(always)]
-    pub fn variant(&self) -> MODE_A {
+    pub const fn variant(&self) -> MODE_A {
         match self.bits {
             3 => MODE_A::INTERRUPT,
             2 => MODE_A::EXCEPTION,
@@ -64,8 +64,8 @@ impl MODE_R {
     }
 }
 #[doc = "Field `mode` writer - The mode of execution flow change"]
-pub type MODE_W<'a, REG, const O: u8> = crate::FieldWriterSafe<'a, REG, 2, O, MODE_A>;
-impl<'a, REG, const O: u8> MODE_W<'a, REG, O>
+pub type MODE_W<'a, REG> = crate::FieldWriterSafe<'a, REG, 2, MODE_A>;
+impl<'a, REG> MODE_W<'a, REG>
 where
     REG: crate::Writable + crate::RegisterSpec,
     REG::Ux: From<u8>,
@@ -107,16 +107,20 @@ impl W {
     #[doc = "Bits 0:29 - The code of cause"]
     #[inline(always)]
     #[must_use]
-    pub fn code(&mut self) -> CODE_W<STATUS_SPEC, 0> {
-        CODE_W::new(self)
+    pub fn code(&mut self) -> CODE_W<STATUS_SPEC> {
+        CODE_W::new(self, 0)
     }
     #[doc = "Bits 30:31 - The mode of execution flow change"]
     #[inline(always)]
     #[must_use]
-    pub fn mode(&mut self) -> MODE_W<STATUS_SPEC, 30> {
-        MODE_W::new(self)
+    pub fn mode(&mut self) -> MODE_W<STATUS_SPEC> {
+        MODE_W::new(self, 30)
     }
-    #[doc = "Writes raw bits to the register."]
+    #[doc = r" Writes raw bits to the register."]
+    #[doc = r""]
+    #[doc = r" # Safety"]
+    #[doc = r""]
+    #[doc = r" Passing incorrect value can cause undefined behaviour. See reference manual"]
     #[inline(always)]
     pub unsafe fn bits(&mut self, bits: u32) -> &mut Self {
         self.bits = bits;

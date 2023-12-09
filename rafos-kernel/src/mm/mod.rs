@@ -75,7 +75,7 @@ impl MM {
     /// `Trampoline` is not collected or recorded by VMAs, since this area cannot
     /// be unmapped or modified manually by user. We set the page table flags without
     /// [`PTEFlags::USER_ACCESSIBLE`] so that malicious user cannot jump to this area.
-    pub fn new() -> Result<Self, KernelError> {
+    pub fn new(is_kernel: bool) -> Result<Self, KernelError> {
         let mut mm = Self {
             page_table: PageTable::new(),
             vma_list: Vec::new(),
@@ -87,13 +87,17 @@ impl MM {
             brk: VirtAddr::from(0),
             exported_symbols: BTreeMap::new(),
         };
+        let mut flags = VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL;
+        if !is_kernel {
+            flags |= VMFlags::USER;
+        }
         mm.alloc_write_vma(
             None,
             VirtAddr::from(config::ASYNCC_ADDR),
             VirtAddr::from(config::ASYNCC_ADDR + config::ASYNCC_LEN),
-            VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
+            flags
         )?;
-
+        // The trampoline won't be added to vmareas.
         mm.page_table.map(
             VirtAddr::from(TRAMPOLINE).into(),
             PhysAddr::from(strampoline as usize).into(),
@@ -120,7 +124,7 @@ impl MM {
     /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
     /// when fork is executed.
     pub fn clone(&mut self) -> Result<Self, KernelError> {
-        let mut mm = MM::new()?;
+        let mut mm = MM::new(false)?;
         for vma in self.vma_list.iter_mut() {
             if let Some(vma) = vma {
                 let src_ptr = self.page_table.translate_va(vma.start_va).unwrap().0;
@@ -395,13 +399,18 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
     /// - `data`: reference of data type.
-    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T) -> KernelResult {
+    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, flags: VMFlags, data: &T) -> Result<&'static mut T, KernelError> {
         let size = core::mem::size_of::<T>();
-        let end_va = va + size;
+        let end_va: VirtAddr = (va + size).ceil().into();
+        self.add_vma(VMArea::new_lazy(va, end_va, flags)?)?;
         self.alloc_frame_range(va, end_va)?;
         let data = unsafe { core::slice::from_raw_parts(data as *const T as *const _, size) };
         unsafe { self.write_vma(data, va, end_va)? };
-        Ok(())
+        if let Some(pa) = self.page_table.translate_va(va){
+            Ok(pa.get_mut::<T>())
+        } else {
+            Err(KernelError::VMAAllocFailed)
+        }
     }
 
     /// Gets bytes translated with the range of [start_va, start_va + len),

@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 
 mod process;
 
+pub use process::*;
 
 pub struct RecycleAllocator {
     current: usize,

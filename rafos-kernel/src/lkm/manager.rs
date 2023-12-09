@@ -190,7 +190,7 @@ impl ModuleManager {
                     start.into(), 
                     end.into(),
                     attr, 
-                );
+                )?;
             }
         }
 

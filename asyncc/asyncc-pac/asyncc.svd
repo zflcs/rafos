@@ -82,6 +82,102 @@
           <addressOffset>0xc</addressOffset>
           <access>read-write</access>
         </register>
+        <register>
+          <name>a0_lsb</name>
+          <description>Argument A0 LSB</description>
+          <addressOffset>0x10</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a0_msb</name>
+          <description>Argument A0 MSB</description>
+          <addressOffset>0x14</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a1_lsb</name>
+          <description>Argument A1 LSB</description>
+          <addressOffset>0x18</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a1_msb</name>
+          <description>Argument A1 MSB</description>
+          <addressOffset>0x1c</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a2_lsb</name>
+          <description>Argument A2 LSB</description>
+          <addressOffset>0x20</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a2_msb</name>
+          <description>Argument A2 MSB</description>
+          <addressOffset>0x24</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a3_lsb</name>
+          <description>Argument A3 LSB</description>
+          <addressOffset>0x28</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a3_msb</name>
+          <description>Argument A3 MSB</description>
+          <addressOffset>0x2c</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a4_lsb</name>
+          <description>Argument A4 LSB</description>
+          <addressOffset>0x30</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a4_msb</name>
+          <description>Argument A4 MSB</description>
+          <addressOffset>0x34</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a5_lsb</name>
+          <description>Argument A5 LSB</description>
+          <addressOffset>0x38</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a5_msb</name>
+          <description>Argument A5 MSB</description>
+          <addressOffset>0x3c</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a6_lsb</name>
+          <description>Argument A6 LSB</description>
+          <addressOffset>0x40</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a6_msb</name>
+          <description>Argument A6 MSB</description>
+          <addressOffset>0x44</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a7_lsb</name>
+          <description>Argument A7 LSB</description>
+          <addressOffset>0x48</addressOffset>
+          <access>read-write</access>
+        </register>
+        <register>
+          <name>a7_msb</name>
+          <description>Argument A7 MSB</description>
+          <addressOffset>0x4c</addressOffset>
+          <access>read-write</access>
+        </register>
       </registers>
     </peripheral>
   </peripherals>

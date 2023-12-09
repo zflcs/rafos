@@ -32,8 +32,8 @@ pub fn kernel_activate() {
 }
 
 /// Without kernel stacks.
-fn new_kernel() -> Result<MM, KernelError> {
-    let mut mm = MM::new()?;
+pub fn new_kernel() -> Result<MM, KernelError> {
+    let mut mm = MM::new(true)?;
 
     // mm.exported_symbols = kernel_rt();
     // Map kernel .text section

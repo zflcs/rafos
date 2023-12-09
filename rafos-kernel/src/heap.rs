@@ -24,6 +24,7 @@ static mut MEMORY: [u8; KERNEL_HEAP_SIZE] = [0u8; KERNEL_HEAP_SIZE];
 pub fn init_heap() {
     unsafe {
         HEAP.lock().init(MEMORY.as_ptr() as usize, KERNEL_HEAP_SIZE);
+        // log::debug!("{:#X}",MEMORY.as_ptr() as usize);
     }
 }
 

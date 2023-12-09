@@ -2,7 +2,7 @@
 //! 
 #![no_std]
 #![no_main]
-#![feature(panic_info_message, alloc_error_handler, lang_items, naked_functions, asm_const)]
+#![feature(panic_info_message, alloc_error_handler, lang_items, naked_functions, asm_const, allocator_api)]
 #![allow(internal_features, non_snake_case)]
 
 #[macro_use]
@@ -26,6 +26,7 @@ mod device;
 mod timer;
 mod task;
 mod trampoline;
+mod test;
 
 pub use frame_allocator::*;
 pub use error::*;
@@ -33,6 +34,8 @@ use asyncc::*;
 
 use core::sync::atomic::{Ordering, AtomicUsize};
 use config::CPU_NUM;
+
+// use crate::fs::{open_file, OpenFlags};
 
 
 
@@ -155,31 +158,12 @@ static mut EXECUTOR: Executor = Executor::new();
 
 #[no_mangle]
 pub fn rust_main(_hart_id: usize) -> ! {
-    // lkm::spawn(alloc::boxed::Box::new(async {
-    //     log::debug!("async task");
-    //     0
-    // }), 0, executor::TaskType::KernelSche);
-    // let a = alloc::vec![1, 2, 3, 4];
-    // log::debug!("{:?}", a);
-    // // lkm::put_test();
-    // lkm::poll_future();
-    // box_drop_test(10000);
-    // test::spawn_time_test(10000);
-    // switch_time_test(10000);
-    // wake_time_test(10000);
-    {
-        asyncc::Asyncc::reset(unsafe { &EXECUTOR });
-    }
-    for _ in 0..10 {
-        use alloc::boxed::Box;
-        asyncc::Asyncc::spawn(Box::new(async {
-            log::debug!("async test");
-            0
-        }), 0, asyncc::TaskType::Other);
-    }
+    Asyncc::reset(unsafe { &EXECUTOR });
+    // let file = open_file("shell", OpenFlags::RDONLY);
+    // let _process = task::Process::new(&file.unwrap().read_all()).unwrap();
+    let _process = task::Process::new_kp().unwrap();
     unsafe {
-        
-        asyncc::Asyncc::set_cause(asyncc::Cause::Finish);
+        Asyncc::set_cause(asyncc::Cause::Finish);
         trampoline::asyncc_entry();
     }
     panic!("Unreachable in rust_main!");
@@ -194,87 +178,3 @@ fn put_str(ptr: *const u8, len: usize) {
     }
 }
 
-mod test {
-
-    use time::*;
-    #[allow(unused)]
-    pub fn box_drop_test(num: usize) {
-        use alloc::boxed::Box;
-        for _ in 0..num {
-            let a = Box::new(test());
-            let raw_ptr = Box::into_raw(a);
-            log::debug!("raw_ptr {:#X}", raw_ptr as *const usize as usize);
-            crate::lkm::spawn(unsafe { Box::from_raw(raw_ptr) }, 0, asyncc::TaskType::Other);
-            crate::lkm::poll_future();
-        }
-    }
-    
-    #[allow(unused)]
-    pub fn spawn_time_test(num: usize) {
-        log::debug!("spawn_time_test");
-        use alloc::{boxed::Box, vec::Vec};
-        let mut spawn_times = Vec::new();
-        for _ in 0..num {
-            let start = Instant::now();
-            crate::lkm::spawn(Box::new(test()), 2, asyncc::TaskType::KernelSche);
-            spawn_times.push(start.elapsed().as_nanos());
-        }
-        crate::lkm::poll_future();
-        log::debug!("spawn future time {:?}", spawn_times);
-    }
-    
-    #[allow(unused)]
-    pub fn switch_time_test(num: usize) {
-        use alloc::boxed::Box;
-        for _ in 0..num {
-            crate::lkm::spawn(Box::new(Help::new()), 0, asyncc::TaskType::KernelSche);
-            // println!("{:?}", spawn(Box::new(Help::new()), 0, TaskType::KernelSche));
-            crate::lkm::poll_future();
-        }
-        
-        // println!("poll future end");
-    }
-    
-    #[allow(unused)]
-    pub fn wake_time_test(num: usize) {
-        use alloc::boxed::Box;
-        for _ in 0..num {
-            let task_ref = crate::lkm::spawn(Box::new(Help::new()), 0, asyncc::TaskType::Other);
-            crate::lkm::poll_future();
-            crate::lkm::wake_task(task_ref);
-            crate::lkm::poll_future();
-        }
-    }
-    use core::future::Future;
-    
-    struct Help{
-        yield_once: bool,
-        time: Instant,
-    }
-    
-    impl Help {
-        pub fn new() -> Self {
-            Self { yield_once: false, time: Instant::now() }
-        }
-    }
-    use core::task::Context;
-    use core::pin::Pin;
-    impl Future for Help {
-        type Output = i32;
-        fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> core::task::Poll<Self::Output> {
-            if !self.yield_once {
-                self.yield_once = true;
-                self.time = Instant::now();
-                core::task::Poll::Pending
-            } else {
-                log::debug!("switch time {}ns", self.time.elapsed().as_nanos());
-                core::task::Poll::Ready(0)
-            }
-        }
-    }
-    
-    async fn test() -> i32 {
-        println!("into async test");
-        0
-    }    
-}
