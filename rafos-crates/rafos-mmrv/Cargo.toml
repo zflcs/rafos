@@ -1,0 +1,17 @@
+[package]
+name = "rafos-mmrv"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+paste = "1.0.9"
+derive_more = "0.99.0"
+
+bitflags = "2.4.1"
+buddy_system_allocator = "0.9"
+log = "0.4"
+riscv = "0.10"
+spin = "0.9"
+kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }

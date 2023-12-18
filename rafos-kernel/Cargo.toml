@@ -23,6 +23,8 @@ errno = { path = "../rafos-crates/rafos-errno", package = "rafos-errno" }
 time = { path = "../rafos-crates/rafos-time", package = "rafos-time" }
 asyncc = { path = "../asyncc" }
 easy-fs = { path = "../rafos-crates/easy-fs" }
+mmrv = { path = "../rafos-crates/rafos-mmrv", package = "rafos-mmrv" }
+
 
 [dependencies.smoltcp]
 version = "0.10.0"
