@@ -17,23 +17,21 @@ extern crate rv_plic;
 
 mod lang_item;
 mod heap;
-mod frame_allocator;
 mod mm;
-mod lkm;
 mod error;
 mod fs;
 mod device;
 mod timer;
 mod task;
 mod trampoline;
-mod test;
 
-pub use frame_allocator::*;
 pub use error::*;
 use asyncc::*;
+use mmrv::frame_init;
 
 use core::sync::atomic::{Ordering, AtomicUsize};
-use config::CPU_NUM;
+use config::{CPU_NUM, MEMORY_END};
+use mmrv::*;
 
 // use crate::fs::{open_file, OpenFlags};
 
@@ -105,11 +103,13 @@ pub unsafe extern "C" fn __entry_others(hartid: usize) -> ! {
     )
 }
 
+extern "C" {
+    fn sbss();
+    fn ebss();
+    fn ekernel();
+}
+
 fn clear_bss() {
-    extern "C" {
-        fn sbss();
-        fn ebss();
-    }
     (sbss as usize..ebss as usize).for_each(|a| unsafe { (a as *mut u8).write_volatile(0) });
 }
 
@@ -120,8 +120,10 @@ pub fn rust_main_init(hart_id: usize) -> ! {
     clear_bss();
     console::init(option_env!("LOG"));
     heap::init_heap();
-    frame_allocator::init_frame_allocator();
-    mm::init();
+    frame_init(
+        Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
+        Frame::floor(PhysAddr::from(MEMORY_END)).into(),
+    );
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
     fs::list_apps();
     // lkm::init();
@@ -149,7 +151,6 @@ pub fn rust_main_init(hart_id: usize) -> ! {
 #[no_mangle]
 pub fn rust_main_init_other(hart_id: usize) -> ! {
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
-    mm::init();
     rust_main(hart_id)
 }
 
@@ -161,7 +162,7 @@ pub fn rust_main(_hart_id: usize) -> ! {
     Asyncc::reset(unsafe { &EXECUTOR });
     // let file = open_file("shell", OpenFlags::RDONLY);
     // let _process = task::Process::new(&file.unwrap().read_all()).unwrap();
-    let _process = task::Process::new_kp().unwrap();
+    // let _process = task::Process::new_kp().unwrap();
     unsafe {
         Asyncc::set_cause(asyncc::Cause::Finish);
         trampoline::asyncc_entry();

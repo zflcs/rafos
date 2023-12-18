@@ -1,5 +1,5 @@
 use super::File;
-use crate::mm::UserBuffer;
+use ubuf::UserBuffer;
 
 pub struct Stdin;
 
@@ -15,7 +15,7 @@ impl File for Stdin {
         if ch < 0 {
             Err(-1)
         } else {
-            unsafe { user_buf.buffers[0].as_mut_ptr().write_volatile(ch as _) };
+            unsafe { user_buf.inner[0].as_mut_ptr().write_volatile(ch as _) };
             Ok(user_buf.len())
         }
     }
@@ -43,8 +43,8 @@ impl File for Stdout {
         panic!("Cannot read from stdout!");
     }
     fn write(&self, user_buf: UserBuffer) -> Result<usize, isize> {
-        for buffer in user_buf.buffers.iter() {
-            console::print!("{}", core::str::from_utf8(*buffer).unwrap());
+        for buffer in &user_buf.inner {
+            console::print!("{}", core::str::from_utf8(buffer).unwrap());
         }
         Ok(user_buf.len())
     }
@@ -72,8 +72,8 @@ impl File for Stderr {
         panic!("Cannot read from stdout!");
     }
     fn write(&self, user_buf: UserBuffer) -> Result<usize, isize> {
-        for buffer in user_buf.buffers.iter() {
-            log::error!("{}", core::str::from_utf8(*buffer).unwrap());
+        for buffer in &user_buf.inner {
+            log::error!("{}", core::str::from_utf8(buffer).unwrap());
         }
         Ok(user_buf.len())
     }

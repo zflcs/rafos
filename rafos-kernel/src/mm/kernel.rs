@@ -1,7 +1,7 @@
 use spin::{Lazy, Mutex};
 
 use config::MEMORY_END;
-use crate::lkm::api::kernel_rt;
+
 use super::*;
 
 extern "C" {
@@ -19,7 +19,7 @@ extern "C" {
 pub static KERNEL_SPACE: Lazy<Arc<Mutex<MM>>> = Lazy::new(|| Arc::new(Mutex::new(new_kernel().unwrap())));
 
 pub fn kernel_token() -> usize {
-    KERNEL_SPACE.lock().token()
+    KERNEL_SPACE.lock().page_table.satp()
 }
 
 ///
@@ -33,7 +33,7 @@ pub fn kernel_activate() {
 
 /// Without kernel stacks.
 pub fn new_kernel() -> Result<MM, KernelError> {
-    let mut mm = MM::new(true)?;
+    let mut mm = MM::new()?;
 
     // mm.exported_symbols = kernel_rt();
     // Map kernel .text section

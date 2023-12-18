@@ -7,7 +7,7 @@ pub use inode::*;
 pub use stdio::*;
 pub use fd::*;
 
-use crate::mm::UserBuffer;
+use ubuf::UserBuffer;
 use core::{
     future::Future,
     pin::Pin,

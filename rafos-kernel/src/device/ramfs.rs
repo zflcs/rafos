@@ -1,7 +1,7 @@
 use core::slice;
 
 use alloc::sync::Arc;
-use spin::{Mutex, Lazy};
+use spin::Lazy;
 use easy_fs::BlockDevice;
 
 

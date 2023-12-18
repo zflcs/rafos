@@ -1,5 +1,5 @@
 
-use super::page_table::PTEFlags;
+use mmrv::PTEFlags;
 bitflags::bitflags! {
     /// Flags in [`VMArea`].
     ///
@@ -31,16 +31,16 @@ impl From<VMFlags> for PTEFlags {
     fn from(value: VMFlags) -> Self {
         let mut flags = Self::empty();
         if value.contains(VMFlags::READ) {
-            flags |= Self::R;
+            flags |= Self::READABLE;
         }
         if value.contains(VMFlags::WRITE) {
-            flags |= Self::W;
+            flags |= Self::WRITABLE;
         }
         if value.contains(VMFlags::EXEC) {
-            flags |= Self::X;
+            flags |= Self::EXECUTABLE;
         }
         if value.contains(VMFlags::USER) {
-            flags |= Self::U;
+            flags |= Self::USER_ACCESSIBLE;
         }
         flags
     }
@@ -49,16 +49,16 @@ impl From<VMFlags> for PTEFlags {
 impl From<PTEFlags> for VMFlags {
     fn from(value: PTEFlags) -> Self {
         let mut flags = Self::empty();
-        if value.contains(PTEFlags::R) {
+        if value.contains(PTEFlags::READABLE) {
             flags |= Self::READ;
         }
-        if value.contains(PTEFlags::W) {
+        if value.contains(PTEFlags::WRITABLE) {
             flags |= Self::WRITE;
         }
-        if value.contains(PTEFlags::X) {
+        if value.contains(PTEFlags::EXECUTABLE) {
             flags |= Self::EXEC;
         }
-        if value.contains(PTEFlags::U) {
+        if value.contains(PTEFlags::USER_ACCESSIBLE) {
             flags |= Self::USER;
         }
         flags

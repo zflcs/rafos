@@ -11,7 +11,7 @@ pub const CPU_NUM: usize = 4;
 pub const MEMORY_END: usize = 0x84000000;
 
 /// page size: 4K
-pub const PAGE_SIZE: usize = 0x1000;
+const PAGE_SIZE: usize = 0x1000;
 /// page size: 4K
 pub const PAGE_MASK: usize = !0x0FFF;
 ///
@@ -23,7 +23,7 @@ pub const TRAP_CONTEXT: usize = TRAMPOLINE - PAGE_SIZE;
 
 /// The highest virtual address of the low 256 GB in SV39.
 // pub const LOW_MAX_VA: usize = 0x0000_003F_FFFF_FFFF;
-pub const LOW_MAX_VA: usize = 0xFFFF_FFFF;
+const LOW_MAX_VA: usize = 0xFFFF_FFFF;
 
 /// User maximum pages
 pub const USER_MAX_PAGES: usize = (LOW_MAX_VA + 1) >> PAGE_SIZE_BITS;

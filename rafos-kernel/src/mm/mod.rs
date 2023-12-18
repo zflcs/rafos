@@ -1,36 +1,23 @@
-mod address;
-mod page_table;
-pub mod loader;
-mod kernel;
-mod vma;
+mod file;
 mod flags;
+mod kernel;
+pub mod vma;
 
+use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
+use core::{fmt, mem::size_of, slice};
+use ubuf::UserBuffer;
 
-pub use self::flags::*;
-pub use vma::VMArea;
-use config::{PAGE_SIZE, USER_HEAP_SIZE, MAX_MAP_COUNT, LOW_MAX_VA, TRAMPOLINE};
-use crate::{KernelResult, KernelError, FrameTracker};
-use crate::lkm::structs::ModuleSymbol;
-use alloc::string::String;
-use alloc::{vec::Vec, collections::BTreeMap, sync::Arc};
-pub use address::{PhysAddr, PhysPageNum, VirtAddr, VirtPageNum};
-pub use address::{StepByOne, VPNRange, PPNRange};
-pub use kernel::*;
-use page_table::PTEFlags;
-pub use page_table::{
-    PageTable,
-    // translate_writable_va, translated_byte_buffer, translated_refmut, translated_str, UserBufferIterator,
-    PageTableEntry, UserBuffer,
-};
+use crate::{KernelError, KernelResult};
+use config::*;
 
-pub fn init() {
-    kernel_activate();
-}
+pub use file::MmapFile;
+pub use flags::*;
+use vma::VMArea;
+use mmrv::*;
+pub use kernel::KERNEL_SPACE;
 
 
 
-
-/// memory space
 pub struct MM {
     /// Holds the pointer to [`PageTable`].
     ///
@@ -59,8 +46,6 @@ pub struct MM {
 
     /// Heap pointer managed by `sys_brk`.
     pub brk: VirtAddr,
-
-    pub exported_symbols: BTreeMap<String, ModuleSymbol>,
 }
 
 extern "C" {
@@ -68,6 +53,7 @@ extern "C" {
 }
 
 /* Global operations */
+
 impl MM {
     /// Create a new empty [`MM`] struct.
     ///
@@ -75,85 +61,94 @@ impl MM {
     /// `Trampoline` is not collected or recorded by VMAs, since this area cannot
     /// be unmapped or modified manually by user. We set the page table flags without
     /// [`PTEFlags::USER_ACCESSIBLE`] so that malicious user cannot jump to this area.
-    pub fn new(is_kernel: bool) -> Result<Self, KernelError> {
-        let mut mm = Self {
-            page_table: PageTable::new(),
-            vma_list: Vec::new(),
-            vma_recycled: Vec::new(),
-            vma_map: BTreeMap::new(),
-            vma_cache: None,
-            entry: VirtAddr::from(0),
-            start_brk: VirtAddr::from(0),
-            brk: VirtAddr::from(0),
-            exported_symbols: BTreeMap::new(),
-        };
-        let mut flags = VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL;
-        if !is_kernel {
-            flags |= VMFlags::USER;
+    pub fn new() -> KernelResult<Self> {
+
+        match PageTable::new() {
+            Ok(page_table) => {
+                let mut mm = Self {
+                    page_table,
+                    vma_list: Vec::new(),
+                    vma_recycled: Vec::new(),
+                    vma_map: BTreeMap::new(),
+                    vma_cache: None,
+                    entry: VirtAddr::zero(),
+                    start_brk: VirtAddr::zero(),
+                    brk: VirtAddr::zero(),
+                };
+                mm.page_table
+                    .map(
+                        VirtAddr::from(TRAMPOLINE).into(),
+                        PhysAddr::from(strampoline as usize).into(),
+                        PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
+                    )
+                    .map_err(|err| {
+                        log::warn!("{}", err);
+                        KernelError::PageTableInvalid
+                    })
+                    .and(Ok(mm))
+            }
+            Err(_) => Err(KernelError::FrameAllocFailed),
         }
-        mm.alloc_write_vma(
-            None,
-            VirtAddr::from(config::ASYNCC_ADDR),
-            VirtAddr::from(config::ASYNCC_ADDR + config::ASYNCC_LEN),
-            flags
-        )?;
-        // The trampoline won't be added to vmareas.
-        mm.page_table.map(
-            VirtAddr::from(TRAMPOLINE).into(),
-            PhysAddr::from(strampoline as usize).into(),
-            PTEFlags::R | PTEFlags::X | PTEFlags::V
-        );
-        Ok(mm)
-    }
-
-    ///
-    pub fn token(&self) -> usize {
-        self.page_table.token()
-    }
-
-    ///
-    pub fn recycle_vma_all(&mut self) {
-        self.vma_list.clear();
-        self.vma_recycled.clear();
-        self.vma_cache = None;
-        self.vma_map.clear();
     }
 
     /// Create a new [`MM`] from cloner.
     ///
     /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
     /// when fork is executed.
-    pub fn clone(&mut self) -> Result<Self, KernelError> {
-        let mut mm = MM::new(false)?;
+    pub fn clone(&mut self) -> KernelResult<Self> {
+        let mut page_table = PageTable::new().map_err(|_| KernelError::FrameAllocFailed)?;
+        let mut new_vma_list = Vec::new();
         for vma in self.vma_list.iter_mut() {
             if let Some(vma) = vma {
-                let src_ptr = self.page_table.translate_va(vma.start_va).unwrap().0;
-                let len = vma.start_va.0 - vma.end_va.0;
-                let src_slice = unsafe { core::slice::from_raw_parts(src_ptr as *const u8, len) };
-                mm.alloc_write_vma(
-                    Some(src_slice), 
-                    vma.start_va, 
-                    vma.end_va, 
-                    vma.flags
-                )?;
+                let mut new_vma = VMArea {
+                    flags: vma.flags,
+                    start_va: vma.start_va,
+                    end_va: vma.end_va,
+                    frames: vma.frames.clone(),
+                    file: vma.file.clone(),
+                };
+
+                // read-only
+                let mut flags = PTEFlags::from(vma.flags);
+                flags.remove(PTEFlags::WRITABLE);
+
+                // map the new vma of child process
+                new_vma.map_all(&mut page_table, flags, false)?;
+                new_vma_list.push(Some(new_vma));
+
+                // remap the old vma of parent process
+                vma.map_all(&mut self.page_table, flags, false)?;
+            } else {
+                new_vma_list.push(None);
             }
         }
-        mm.entry = self.entry;
-        mm.start_brk = self.start_brk;
-        mm.brk = self.brk;
-        mm.exported_symbols = self.exported_symbols.clone();
-
-        Ok(mm)
+        page_table
+            .map(
+                VirtAddr::from(TRAMPOLINE).into(),
+                PhysAddr::from(strampoline as usize).into(),
+                PTEFlags::READABLE | PTEFlags::EXECUTABLE | PTEFlags::VALID,
+            )
+            .map_err(|err| {
+                log::warn!("{}", err);
+                KernelError::PageTableInvalid
+            })?;
+        Ok(Self {
+            page_table,
+            vma_list: new_vma_list,
+            vma_recycled: self.vma_recycled.clone(),
+            vma_map: self.vma_map.clone(),
+            vma_cache: None,
+            entry: self.entry,
+            start_brk: self.start_brk,
+            brk: self.brk,
+        })
     }
 
     /// A warpper for `translate` in `PageTable`.
-    pub fn translate(&mut self, va: VirtAddr) -> Option<PhysAddr> {
-        self.page_table.translate_va(va)
-    }
-
-    /// 
-    pub fn translate_pte(&self, vpn: VirtPageNum) -> Option<PageTableEntry> {
-        self.page_table.translate(vpn)
+    pub fn translate(&mut self, va: VirtAddr) -> KernelResult<PhysAddr> {
+        self.page_table
+            .translate(va)
+            .map_err(|_| KernelError::PageTableInvalid)
     }
 
     /// The number of virtual memory areas.
@@ -180,32 +175,34 @@ impl MM {
         let end_ptr = data.len();
         let mut data_ptr: usize = 0;
         let mut curr_va = start_va;
-        let mut curr_page = VirtPageNum::from(start_va);
-        let end_page = VirtPageNum::from(end_va); // inclusive
-        // log::debug!("write vma {:#X?}-{:#X?}", start_va, end_va);
-        // log::debug!("write page {:#X?}-{:#X?}", curr_page, end_page);
+        let mut curr_page = Page::from(start_va);
+        let end_page = Page::from(end_va); // inclusive
         loop {
             let page_len: usize = if curr_page == end_page {
-                (end_va - curr_va.0).into()
+                (end_va - curr_va).into()
             } else {
                 PAGE_SIZE - curr_va.page_offset()
             };
-            // log::debug!("page len {}, curr_page {:X?}, curr_va {:X?}", page_len, curr_page, curr_va);
+
             // Copy data to allocated frames.
             let src = &data[data_ptr..end_ptr.min(data_ptr + page_len)];
-            let dst = self.page_table.translate_va(curr_va).and_then(|pa| unsafe {
-                // log::debug!("pa {:X?}", pa.0);
-                Some(core::slice::from_raw_parts_mut(
-                    pa.0 as *mut u8,
+            let dst = self.page_table.translate(curr_va).and_then(|pa| unsafe {
+                Ok(slice::from_raw_parts_mut(
+                    pa.value() as *mut u8,
                     page_len.min(end_ptr - data_ptr),
                 ))
-            }).expect("dst none");
-            dst.copy_from_slice(src);
+            });
+            if dst.is_err() {
+                log::warn!("{:?}", dst.err());
+                return Err(KernelError::PageTableInvalid);
+            }
+            dst.unwrap().copy_from_slice(src);
 
             // Step to the next page.
             data_ptr += page_len;
             curr_va += page_len;
             curr_page += 1;
+
             if curr_va >= end_va || data_ptr >= end_ptr {
                 break;
             }
@@ -218,7 +215,6 @@ impl MM {
     /// This function does not create any memory map for the new area.
     pub fn add_vma(&mut self, vma: VMArea) -> KernelResult {
         if self.map_count() >= MAX_MAP_COUNT {
-            log::error!("Too many map areas");
             return Err(KernelError::VMAAllocFailed);
         }
         let mut index = self.vma_list.len();
@@ -269,8 +265,9 @@ impl MM {
         end: VirtAddr,
         flags: VMFlags,
         anywhere: bool,
-    ) -> Result<VirtAddr, KernelError> {
-        let len = end.0 - start.0;
+        file: Option<Arc<MmapFile>>,
+    ) -> KernelResult<VirtAddr> {
+        let len = end.value() - start.value();
         let (start, end) = if anywhere {
             let start = self.find_free_area(start, len)?;
             (start, start + len)
@@ -278,7 +275,9 @@ impl MM {
             do_munmap(self, start, len)?;
             (start, end)
         };
-        let vma = VMArea::new_lazy(start, end, flags)?;
+
+        let vma = VMArea::new_lazy(start, end, flags, file)?;
+
         // No need to fllush TLB explicitly; old maps have been cleaned.
         self.add_vma(vma)?;
 
@@ -286,18 +285,18 @@ impl MM {
     }
 
     /// Finds a free area.
-    pub fn find_free_area(&self, hint: VirtAddr, len: usize) -> Result<VirtAddr, KernelError> {
-        let mut last_end = VirtAddr::from(0);
+    pub fn find_free_area(&self, hint: VirtAddr, len: usize) -> KernelResult<VirtAddr> {
+        let mut last_end = VirtAddr::zero();
         let min_addr = self.mmap_min_addr();
         for (_, index) in self.vma_map.range(hint..) {
             if let Some(vma) = &self.vma_list[*index] {
-                if (vma.start_va - last_end.0).0 >= len && vma.start_va - len >= min_addr {
+                if (vma.start_va - last_end).value() >= len && vma.start_va - len >= min_addr {
                     return Ok(vma.start_va - len);
                 }
                 last_end = vma.end_va;
             }
         }
-        Ok(last_end)
+        Err(KernelError::VMAAllocFailed)
     }
 
     /// Gets the virtual memory area that contains the virutal address.
@@ -315,8 +314,8 @@ impl MM {
     pub fn get_vma<T>(
         &mut self,
         va: VirtAddr,
-        mut op: impl FnMut(&mut VMArea, &mut PageTable, usize) -> Result<T, KernelError>,
-    ) -> Result<T, KernelError> {
+        mut op: impl FnMut(&mut VMArea, &mut PageTable, usize) -> KernelResult<T>,
+    ) -> KernelResult<T> {
         if let Some(index) = self.vma_cache {
             if let Some(area) = &mut self.vma_list[index] {
                 if area.contains(va) {
@@ -334,12 +333,12 @@ impl MM {
             }
         }
 
-        Err(KernelError::VMANotFound)
+        Err(KernelError::PageUnmapped)
     }
 
     /// Gets an ordered vector of the index of virtual memory areas that intersect
     /// with the range.
-    pub fn get_vma_range(&mut self, start: VirtAddr, end: VirtAddr) -> Result<Vec<usize>, KernelError> {
+    pub fn get_vma_range(&mut self, start: VirtAddr, end: VirtAddr) -> KernelResult<Vec<usize>> {
         let mut v = Vec::new();
 
         // The first area that contains the start of range.
@@ -360,9 +359,9 @@ impl MM {
     ///
     /// # Argument
     /// - `va`: starting virtual address.
-    pub fn alloc_frame(&mut self, va: VirtAddr) -> Result<Arc<FrameTracker>, KernelError> {
+    pub fn alloc_frame(&mut self, va: VirtAddr) -> KernelResult<Frame> {
         self.get_vma(va, |vma, pt, _| {
-            vma.alloc_frame(VirtPageNum::from(va), pt)
+            vma.alloc_frame(Page::from(va), pt).map(|(frame, _)| frame)
         })
     }
 
@@ -375,11 +374,12 @@ impl MM {
         &mut self,
         start_va: VirtAddr,
         end_va: VirtAddr,
-    ) -> Result<Vec<Arc<FrameTracker>>, KernelError> {
+    ) -> KernelResult<Vec<Frame>> {
         let mut frames = Vec::new();
-        for vpn in VPNRange::new(start_va.into(), end_va.into()) {
+        for page in PageRange::from_virt_addr(start_va, (end_va - start_va).value()) {
             frames.push(
-                self.get_vma(VirtAddr::from(vpn), |vma, pt, _| vma.alloc_frame(vpn, pt))?,
+                self.get_vma(page.start_address(), |vma, pt, _| vma.alloc_frame(page, pt))
+                    .map(|(frame, _)| frame)?,
             );
         }
         Ok(frames)
@@ -390,7 +390,7 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
     pub fn alloc_type<T: Sized>(&mut self, va: VirtAddr) -> KernelResult {
-        self.alloc_frame_range(va, va + core::mem::size_of::<T>())?;
+        self.alloc_frame_range(va, va + size_of::<T>())?;
         Ok(())
     }
 
@@ -399,18 +399,13 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
     /// - `data`: reference of data type.
-    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, flags: VMFlags, data: &T) -> Result<&'static mut T, KernelError> {
-        let size = core::mem::size_of::<T>();
-        let end_va: VirtAddr = (va + size).ceil().into();
-        self.add_vma(VMArea::new_lazy(va, end_va, flags)?)?;
+    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T) -> KernelResult {
+        let size = size_of::<T>();
+        let end_va = va + size;
         self.alloc_frame_range(va, end_va)?;
-        let data = unsafe { core::slice::from_raw_parts(data as *const T as *const _, size) };
+        let data = unsafe { slice::from_raw_parts(data as *const T as *const _, size) };
         unsafe { self.write_vma(data, va, end_va)? };
-        if let Some(pa) = self.page_table.translate_va(va){
-            Ok(pa.get_mut::<T>())
-        } else {
-            Err(KernelError::VMAAllocFailed)
-        }
+        Ok(())
     }
 
     /// Gets bytes translated with the range of [start_va, start_va + len),
@@ -422,34 +417,62 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address
     /// - `len`: total length of the buffer
-    pub fn get_buf_mut(&mut self, va: VirtAddr, len: usize) -> Result<UserBuffer, KernelError> {
+    pub fn get_buf_mut(&mut self, va: VirtAddr, len: usize) -> KernelResult<UserBuffer> {
         let mut start_va = va;
         let end_va = start_va + len;
         let mut v = Vec::new();
         while start_va < end_va {
-            let next_page = VirtPageNum::from(start_va) + 1;
+            let next_page = Page::from(start_va) + 1;
             let page_off = start_va.page_offset();
-            let page_len: usize = (end_va - start_va.0).0
-                .min((VirtAddr::from(next_page) - start_va.0).0);
+            let page_len: usize = (end_va - start_va)
+                .min(next_page.start_address() - start_va)
+                .into();
             let frame = self.alloc_frame(start_va)?;
-            v.push(&mut frame.ppn.get_bytes_array()[page_off..page_off + page_len]);
+            v.push(&mut frame.as_slice_mut()[page_off..page_off + page_len]);
             start_va += page_len;
         }
         Ok(UserBuffer::new(v))
     }
 
+    /// Gets a string loaded from starting virtual address.
+    ///
+    /// # Argument
+    /// - `va`: starting virtual address.
+    /// - `len`: total length of the string.
+    /// If the length is not provided, the string must end with a '\0'. New frames
+    /// will be allocated until a '\0' occurs.
+    pub fn get_str(&mut self, va: VirtAddr) -> KernelResult<String> {
+        let mut string = String::new();
+        let mut alloc = true;
+        let mut frame = Frame::from(0);
+        let mut va = va;
+        loop {
+            if va.page_offset() == 0 {
+                alloc = true;
+            }
+            if alloc {
+                frame = self.alloc_frame(va)?;
+                alloc = false;
+            }
+            let ch: u8 = frame.as_slice_mut()[va.page_offset()];
+            if ch == 0 {
+                break;
+            }
+            string.push(ch as char);
+            va += 1;
+        }
+        Ok(string)
+    }
 }
 
-use core::fmt;
 impl fmt::Debug for MM {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
-            "\ntoken: 0x{:X?}\nAddress Space: entry=0x{:X?}, start_brk=0x{:X?}, brk=0x{:X?}",
-            self.page_table.token(),
-            self.entry.0,
-            self.start_brk.0,
-            self.brk.0,
+            "\nAddress Space: entry=0x{:X?}, start_brk=0x{:X?}, brk=0x{:X?}",
+            self.entry.value(),
+            self.start_brk.value(),
+            self.brk.value(),
         )?;
         for (_, index) in &self.vma_map {
             if let Some(vma) = &self.vma_list[*index] {
@@ -460,7 +483,7 @@ impl fmt::Debug for MM {
     }
 }
 
-
+/* Syscall helpers */
 
 /// Value aligned to the multiple of page size.
 pub fn page_align(value: usize) -> usize {
@@ -469,20 +492,98 @@ pub fn page_align(value: usize) -> usize {
 
 /// Page index from start in a range of pages
 pub fn page_index(start_va: VirtAddr, va: VirtAddr) -> usize {
-    va.floor().0 - start_va.floor().0
+    Page::from(va).number() - Page::from(start_va).number()
 }
 
 /// The number of total pages covered by this exclusive range.
 pub fn page_count(start_va: VirtAddr, end_va: VirtAddr) -> usize {
-    end_va.floor().0 - start_va.floor().0 + 1
+    Page::from(end_va - 1).number() - Page::from(start_va).number() + 1
 }
 
+/// Range of pages
+pub fn page_range(start_va: VirtAddr, end_va: VirtAddr) -> PageRange {
+    PageRange {
+        start: Page::from(start_va),
+        end: Page::from(end_va - 1) + 1,
+    }
+}
+
+/// Reads a type from user address space.
+#[macro_export]
+macro_rules! read_user {
+    ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
+        let ubuf = $mm.get_buf_mut($addr, core::mem::size_of::<$ty>())?;
+        ubuf::read_user_buf!(ubuf, $ty, $item);
+        Ok::<(), Errno>(())
+    }};
+}
+
+/// Writes a type to user address space.
+#[macro_export]
+macro_rules! write_user {
+    ($mm:expr, $addr:expr, $item:expr, $ty:ty) => {{
+        let ubuf = $mm.get_buf_mut($addr, core::mem::size_of::<$ty>())?;
+        ubuf::write_user_buf!(ubuf, $ty, $item);
+        Ok::<(), Errno>(())
+    }};
+}
+
+// /// A helper for [`syscall_interface::SyscallProc::brk`].
+// pub fn do_brk(mm: &mut MM, brk: VirtAddr) -> SyscallResult {
+//     if brk < mm.start_brk {
+//         return Ok(mm.brk.value());
+//     }
+
+//     let new_page = Page::from(brk);
+//     let old_page = Page::from(mm.brk);
+//     if new_page == old_page {
+//         mm.brk = brk;
+//         return Ok(brk.value());
+//     }
+
+//     // Always allow shrinking brk.
+//     if brk < mm.brk {
+//         if do_munmap(
+//             mm,
+//             (new_page + 1).start_address(),
+//             (old_page.number() - new_page.number()) * PAGE_SIZE,
+//         )
+//         .is_err()
+//         {
+//             return Ok(mm.brk.value());
+//         }
+//         mm.brk = brk;
+//         return Ok(mm.brk.value());
+//     }
+
+//     // Check against existing mmap mappings.
+//     if mm.get_vma(brk - 1, |_, _, _| Ok(())).is_ok() {
+//         return Ok(mm.brk.value());
+//     }
+
+//     // Initialize memory area
+//     if mm.brk == mm.start_brk {
+//         mm.add_vma(VMArea::new_lazy(
+//             mm.start_brk,
+//             mm.start_brk + PAGE_SIZE,
+//             VMFlags::USER | VMFlags::READ | VMFlags::WRITE,
+//             None,
+//         )?)?;
+//     }
+
+//     mm.get_vma(mm.start_brk, |vma, _, _| unsafe {
+//         vma.extend(brk);
+//         Ok(())
+//     })
+//     .unwrap();
+//     mm.brk = brk;
+//     Ok(brk.value())
+// }
 
 /// A helper for [`syscall_interface::SyscallProc::munmap`].
 pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
     let len = page_align(len);
-    if !start.aligned() || len == 0 {
-        log::error!("munmap invalid args");
+    if !start.is_aligned() || len == 0 {
         return Err(KernelError::InvalidArgs);
     }
     let end = start + len;
@@ -497,8 +598,7 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
         let mut new_vma = None;
 
         if start > vma.start_va && end < vma.end_va && mm.vma_map.len() >= MAX_MAP_COUNT {
-            log::error!("Too many map areas");
-            return Err(KernelError::InvalidArgs);
+            return Err(KernelError::VMAAllocFailed);
         }
 
         // intersection cases
@@ -533,66 +633,171 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
     Ok(())
 }
 
-/// A helper for [`syscall_interface::SyscallProc::mmap`].
-///
-/// TODO: MAP_SHARED and MAP_PRIVATE
-pub fn do_mmap(
-    mm: &mut MM,
-    hint: VirtAddr,
-    len: usize,
-    prot: MmapProt,
-    flags: MmapFlags,
-    fd: usize,
-    off: usize,
-) -> Result<usize, KernelError> {
-    log::trace!(
-        "MMAP [{:?}, {:?}) {:#?} {:#?} 0x{:X} 0x{:X}",
-        hint,
-        hint + len,
-        prot,
-        flags,
-        fd,
-        off
-    );
+// /// A helper for [`syscall_interface::SyscallProc::mprotect`].
+// pub fn do_mprotect(mm: &mut MM, start: VirtAddr, len: usize, prot: MmapProt) -> SyscallResult {
+//     log::trace!("MPROTECT [{:?}, {:?}), {:#?}", start, start + len, prot);
 
-    if len == 0
-        || !hint.aligned()
-        || !(hint + len).aligned()
-        || hint + len > VirtAddr::from(LOW_MAX_VA)
-        || hint == VirtAddr::from(0) && flags.contains(MmapFlags::MAP_FIXED)
-    {
-        log::error!("mmap invalid args");
-        return Err(KernelError::InvalidArgs);
-    }
+//     let len = page_align(len);
+//     if !start.is_aligned() || len == 0 {
+//         return Err(Errno::EINVAL);
+//     }
+//     let end = start + len;
 
-    if mm.map_count() >= MAX_MAP_COUNT {
-        log::error!("Too many map areas");
-        return Err(KernelError::InvalidArgs);
-    }
+//     // avoid crashes
+//     mm.vma_cache = None;
 
-    // Find an available area by kernel.
-    let anywhere = (hint == VirtAddr::from(0)) && !flags.contains(MmapFlags::MAP_FIXED);
+//     // search vmas
+//     let vma_range = mm.get_vma_range(start, end)?;
+//     if vma_range.is_empty() {
+//         return Err(Errno::ENOMEM);
+//     }
 
-    // Handle different cases indicated by `MmapFlags`.
-    if flags.contains(MmapFlags::MAP_ANONYMOUS) {
-        if fd as isize == -1 && off == 0 {
-            if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere) {
-                return Ok(start.0);
-            } else {
-                log::error!("no memory");
-                return Err(KernelError::VMAAllocFailed);
-            }
-        }
-        log::error!("mmap invalid args");
-        return Err(KernelError::InvalidArgs);
-    }
+//     let new_flags = VMFlags::from(prot);
+//     for index in vma_range {
+//         let vma = mm.vma_list[index].as_mut().unwrap();
 
-    // TODO: Map to backend file.
-    
+//         // checks file access
+//         if let Some(file) = &vma.file {
+//             if !file.mprot(prot) {
+//                 return Err(Errno::EACCES);
+//             }
+//         }
 
-    // Invalid arguments or unimplemented cases
-    // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
-    // Err(Errno::EINVAL)
-    log::error!("mmap invalid args");
-    return Err(KernelError::InvalidArgs);
-}
+//         // checks flag difference
+//         let new_flags = new_flags | vma.flags & !(VMFlags::READ | VMFlags::WRITE | VMFlags::EXEC);
+//         if new_flags == vma.flags {
+//             continue;
+//         }
+
+//         // checks map limit
+//         if (start > vma.start_va || end < vma.end_va) && mm.vma_map.len() + 1 >= MAX_MAP_COUNT {
+//             return Err(Errno::ENOMEM);
+//         }
+
+//         // intersection cases
+//         if vma.start_va >= start && vma.end_va <= end {
+//             vma.flags = new_flags;
+//         } else if vma.start_va < start && vma.end_va > end {
+//             let (mut mid, right) = vma.split(start, end);
+//             mid.as_mut().unwrap().flags = new_flags;
+//             mm.add_vma(mid.unwrap()).unwrap();
+//             mm.add_vma(right.unwrap()).unwrap();
+//         } else if vma.end_va > end {
+//             // vma starting address modified to end
+//             mm.vma_map.remove(&vma.start_va);
+//             let mut left = vma.split(start, end).0.unwrap();
+//             mm.vma_map.insert(vma.start_va, index);
+//             left.flags = new_flags;
+//             mm.add_vma(left).unwrap();
+//         } else {
+//             let mut right = vma.split(start, end).0.unwrap();
+//             right.flags = new_flags;
+//             mm.add_vma(right).unwrap();
+//         }
+//     }
+
+//     Ok(0)
+// }
+
+// /// A helper for [`syscall_interface::SyscallProc::mmap`].
+// ///
+// /// TODO: MAP_SHARED and MAP_PRIVATE
+// pub fn do_mmap(
+//     task: &Task,
+//     hint: VirtAddr,
+//     len: usize,
+//     prot: MmapProt,
+//     flags: MmapFlags,
+//     fd: usize,
+//     off: usize,
+// ) -> SyscallResult {
+//     log::trace!(
+//         "MMAP [{:?}, {:?}) {:#?} {:#?} 0x{:X} 0x{:X}",
+//         hint,
+//         hint + len,
+//         prot,
+//         flags,
+//         fd,
+//         off
+//     );
+
+//     if len == 0
+//         || !hint.is_aligned()
+//         || !(hint + len).is_aligned()
+//         || hint + len > VirtAddr::from(LOW_MAX_VA)
+//         || hint == VirtAddr::zero() && flags.contains(MmapFlags::MAP_FIXED)
+//     {
+//         return Err(Errno::EINVAL);
+//     }
+
+//     let mut mm = task.mm();
+//     if mm.map_count() >= MAX_MAP_COUNT {
+//         return Err(Errno::ENOMEM);
+//     }
+
+//     // Find an available area by kernel.
+//     let anywhere = hint == VirtAddr::zero() && !flags.contains(MmapFlags::MAP_FIXED);
+
+//     // Handle different cases indicated by `MmapFlags`.
+//     if flags.contains(MmapFlags::MAP_ANONYMOUS) {
+//         if fd as isize == -1 && off == 0 {
+//             if let Ok(start) = mm.alloc_vma(hint, hint + len, prot.into(), anywhere, None) {
+//                 return Ok(start.value());
+//             } else {
+//                 return Err(Errno::ENOMEM);
+//             }
+//         }
+//         return Err(Errno::EINVAL);
+//     }
+
+//     // Map to backend file.
+//     if let Ok(file) = task.files().get(fd) {
+//         if !file.is_reg() || !file.read_ready() {
+//             return Err(Errno::EACCES);
+//         }
+//         if let Some(_) = file.seek(off, vfs::SeekWhence::Set) {
+//             if let Ok(start) = mm.alloc_vma(
+//                 hint,
+//                 hint + len,
+//                 prot.into(),
+//                 anywhere,
+//                 Some(Arc::new(MmapFile::new(file, off))),
+//             ) {
+//                 return Ok(start.value());
+//             } else {
+//                 return Err(Errno::ENOMEM);
+//             }
+//         } else {
+//             return Err(Errno::EACCES);
+//         }
+//     } else {
+//         return Err(Errno::EBADF);
+//     }
+
+//     // Invalid arguments or unimplemented cases
+//     // flags contained none of MAP_PRIVATE, MAP_SHARED, or MAP_SHARED_VALIDATE.
+//     // Err(Errno::EINVAL)
+// }
+
+// /* Trap helpers */
+
+// /// A page fault helper for [`crate::trap::user_trap_handler`].
+// ///
+// /// Store page fault might be caused by:
+// /// 1. Frame not allocated yet;
+// /// 2. Unable to write (COW);
+// pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {
+//     mm.get_vma(va, |vma, pt, _| {
+//         if !vma.flags.contains(flags) {
+//             return Err(KernelError::FatalPageFault);
+//         }
+
+//         let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
+
+//         if !alloc {
+//             return Err(KernelError::FatalPageFault);
+//         }
+
+//         Ok(())
+//     })
+// }

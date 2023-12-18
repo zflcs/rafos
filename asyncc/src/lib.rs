@@ -139,23 +139,23 @@ impl Asyncc {
 
     ///
     pub fn get_args() -> Args {
-        let mut a0 = 0usize;
+        let mut _a0 = 0usize;
         let hardware = Self::hardware();
-        a0 = hardware.a0_lsb().read().bits() as _;
-        a0 |= (hardware.a0_msb().read().bits() as usize) << 32;
-        Args { a: [a0, 0, 0, 0, 0, 0, 0, 0] }
+        _a0 = hardware.a0_lsb().read().bits() as _;
+        _a0 |= (hardware.a0_msb().read().bits() as usize) << 32;
+        Args { a: [_a0, 0, 0, 0, 0, 0, 0, 0] }
     }
 
     ///
     pub fn get_args2() -> Args {
-        let mut a0 = 0usize;
-        let mut a1 = 0usize;
+        let mut _a0 = 0usize;
+        let mut _a1 = 0usize;
         let hardware = Self::hardware();
-        a0 = hardware.a0_lsb().read().bits() as _;
-        a0 |= (hardware.a0_msb().read().bits() as usize) << 32;
-        a1 = hardware.a1_lsb().read().bits() as _;
-        a1 |= (hardware.a1_msb().read().bits() as usize) << 32;
-        Args { a: [a0, a1, 0, 0, 0, 0, 0, 0] }
+        _a0 = hardware.a0_lsb().read().bits() as _;
+        _a0 |= (hardware.a0_msb().read().bits() as usize) << 32;
+        _a1 = hardware.a1_lsb().read().bits() as _;
+        _a1 |= (hardware.a1_msb().read().bits() as usize) << 32;
+        Args { a: [_a0, _a1, 0, 0, 0, 0, 0, 0] }
     }
 
 

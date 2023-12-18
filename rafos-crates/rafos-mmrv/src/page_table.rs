@@ -6,7 +6,7 @@ use crate::{config::*, frame_alloc::AllocatedFrame, Frame, Page, PhysAddr, VirtA
 
 bitflags! {
     /// Page table entry flag bits in SV39
-    #[derive(Debug)]
+    #[derive(Debug, Clone, Copy)]
     pub struct PTEFlags: u64 {
         const NONE = 0;
 

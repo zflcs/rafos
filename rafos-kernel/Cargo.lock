@@ -408,6 +408,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "rafos-id-alloc"
+version = "0.1.0"
+
+[[package]]
 name = "rafos-kernel"
 version = "0.1.0"
 dependencies = [
@@ -415,12 +419,15 @@ dependencies = [
  "bitflags 2.4.1",
  "buddy_system_allocator",
  "easy-fs",
+ "kernel-sync",
  "log",
  "rafos-config",
  "rafos-console",
  "rafos-errno",
+ "rafos-id-alloc",
  "rafos-mmrv",
  "rafos-time",
+ "rafos-ubuf",
  "riscv",
  "rv-plic",
  "sbi-rt",
@@ -446,6 +453,10 @@ dependencies = [
 
 [[package]]
 name = "rafos-time"
+version = "0.1.0"
+
+[[package]]
+name = "rafos-ubuf"
 version = "0.1.0"
 
 [[package]]

@@ -7,6 +7,7 @@ use alloc::boxed::Box;
 
 use asyncc::*;
 use config::ASYNCC_ADDR;
+use mmrv::AllocatedFrame;
 
 use crate::frame_alloc;
 
@@ -89,8 +90,7 @@ fn handler() -> Option<TaskRef> {
                         Asyncc::set_curr(None);
                         Asyncc::reset(args.a[1] as *const usize as _);
                         let satp = args.a[0];
-                        let mut stack = frame_alloc().unwrap().ppn.0 << 12;
-                        stack += 0x1000;
+                        let mut stack = AllocatedFrame::new(true).unwrap().start_address().value();
                         log::debug!("stack {:#X}", stack);
                         unsafe {
                             riscv::register::satp::write(satp);
@@ -147,7 +147,7 @@ pub fn execute(task_ref: Option<TaskRef>) {
     } else {
         let executor = asyncc::Asyncc::get_executor();
         if executor.state.load(Ordering::Relaxed) == ExecutorState::Ready as _ {
-            Asyncc::spawn(Box::new(crate::test::test()), 0, asyncc::TaskType::Other);
+            // Asyncc::spawn(Box::new(crate::test::test()), 0, asyncc::TaskType::Other);
             executor.state.store(ExecutorState::Running as _, Ordering::Relaxed);
         }
     }
