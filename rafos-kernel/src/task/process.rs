@@ -7,14 +7,11 @@ use core::{
 
 use super::*;
 use asyncc::*;
-use buddy_system_allocator::LockedHeap;
-use config::{USER_HEAP_SIZE, USER_HEAP_PTR, PAGE_MASK};
-/// This mod define `Process`
-/// 
 
-use spin::{Lazy, Mutex};
-use alloc::{vec::Vec, sync::{Arc, Weak}, boxed::Box};
-use crate::{mm::{MM, VMFlags}, fs::{File, FDManager}, KernelError};
+use spin::Lazy;
+use kernel_sync::SpinLock;
+use alloc::{vec::Vec, sync::{Arc, Weak}};
+use crate::{mm::MM, fs::FDManager, KernelError};
 
 use super::TaskState;
 
@@ -25,28 +22,24 @@ pub struct Process {
     // immutable
     pub pid: PidHandle,
     // mutable
-    pub executor: Option<usize>,
-    pub allocator: Option<&'static LockedHeap<32>>,
-    pub state: Mutex<TaskState>,
-    pub mm: Mutex<MM>,
-    pub parent: Mutex<Option<Weak<Process>>>,
-    pub children: Mutex<Vec<Arc<Process>>>,
+    pub state: SpinLock<TaskState>,
+    pub mm: SpinLock<MM>,
+    pub parent: SpinLock<Option<Weak<Process>>>,
+    pub children: SpinLock<Vec<Arc<Process>>>,
     pub exit_code: AtomicI32,
-    pub fd_table: Mutex<FDManager>,
+    pub fd_table: SpinLock<FDManager>,
 }
 
 impl Process {
     pub fn idle() -> Self {
         Self {
             pid: PidHandle(IDLE_PID),
-            executor: None,
-            allocator: None,
-            state: Mutex::new(TaskState::RUNNABLE),
-            mm: Mutex::new(MM::new().unwrap()),
-            parent: Mutex::new(None),
-            children: Mutex::new(Vec::new()),
+            state: SpinLock::new(TaskState::RUNNABLE),
+            mm: SpinLock::new(MM::new(false).unwrap()),
+            parent: SpinLock::new(None),
+            children: SpinLock::new(Vec::new()),
             exit_code: AtomicI32::new(0),
-            fd_table: Mutex::new(FDManager::new())
+            fd_table: SpinLock::new(FDManager::new())
         }
     }
 
@@ -127,9 +120,6 @@ impl Future for Process {
             Poll::Ready(self.exit_code.load(core::sync::atomic::Ordering::Relaxed))
         } else {
             let token = self.mm.lock().page_table.satp();
-            let executor = self.executor.unwrap();
-            Asyncc::set_args2(token, executor);
-            log::debug!("into process token: {:#X}, executor: {:#X}", token, executor);
             Poll::Pending
         }
     }

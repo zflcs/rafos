@@ -1,5 +1,5 @@
-use spin::{Lazy, Mutex};
-
+use spin::Lazy;
+use kernel_sync::SpinLock;
 use config::MEMORY_END;
 
 use super::*;
@@ -16,7 +16,7 @@ extern "C" {
     fn ekernel();
 }
 
-pub static KERNEL_SPACE: Lazy<Arc<Mutex<MM>>> = Lazy::new(|| Arc::new(Mutex::new(new_kernel().unwrap())));
+pub static KERNEL_SPACE: Lazy<Arc<SpinLock<MM>>> = Lazy::new(|| Arc::new(SpinLock::new(new_kernel().unwrap())));
 
 pub fn kernel_token() -> usize {
     KERNEL_SPACE.lock().page_table.satp()
@@ -32,10 +32,8 @@ pub fn kernel_activate() {
 }
 
 /// Without kernel stacks.
-pub fn new_kernel() -> Result<MM, KernelError> {
-    let mut mm = MM::new()?;
-
-    // mm.exported_symbols = kernel_rt();
+fn new_kernel() -> Result<MM, KernelError> {
+    let mut mm = MM::new(true)?;
     // Map kernel .text section
     mm.alloc_write_vma(
         None,
@@ -43,10 +41,7 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         (etext as usize).into(),
         VMFlags::READ | VMFlags::EXEC | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        ".text", stext as usize, etext as usize
-    );
+
     // Map kernel .rodata section
     mm.alloc_write_vma(
         None,
@@ -54,10 +49,6 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         (erodata as usize).into(),
         VMFlags::READ | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        ".rodata", srodata as usize, erodata as usize
-    );
 
     // Map kernel .data section
     mm.alloc_write_vma(
@@ -66,10 +57,6 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         (edata as usize).into(),
         VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        ".data", sdata as usize, edata as usize
-    );
 
     // Map kernel .bss section
     mm.alloc_write_vma(
@@ -78,10 +65,6 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         (ebss as usize).into(),
         VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        ".bss", sbss_with_stack as usize, ebss as usize
-    );
 
     // Physical memory area
     mm.alloc_write_vma(
@@ -90,10 +73,6 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         MEMORY_END.into(),
         VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        "mem", ekernel as usize, MEMORY_END
-    );
 
     // plic
     mm.alloc_write_vma(
@@ -102,37 +81,17 @@ pub fn new_kernel() -> Result<MM, KernelError> {
         0x1000_0000.into(),
         VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
     )?;
-    info!(
-        "{:>10} [{:#x}, {:#x})",
-        "plic", 0xc00_0000, 0x1000_0000
-    );
 
-    #[cfg(feature = "board_qemu")]
-    {
+
+    for (start, len) in MMIO {
         mm.alloc_write_vma(
             None,
-            0x1000_6000.into(),
-            0x1000_9000.into(),
+            (*start).into(),
+            ((*start) + (*len)).into(),
             VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
         )?;
-        info!(
-            "{:>10} [{:#x}, {:#x})",
-            "mmio", 0x1000_6000, 0x1000_9000
-        );
     }
-    #[cfg(feature = "board_axu15eg")]
-    {
-        mm.alloc_write_vma(
-            None,
-            0x6000_0000.into(),
-            0x6200_0000.into(),
-            VMFlags::READ | VMFlags::WRITE | VMFlags::IDENTICAL,
-        )?;
-        info!(
-            "{:>10} [{:#x}, {:#x})",
-            "mmio", 0x6000_0000, 0x6200_0000
-        );
-    }
+
     mm.start_brk = MEMORY_END.into();
     unsafe { core::arch::asm!("fence.i") }
     log::debug!("{:?}", mm);

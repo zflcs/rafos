@@ -124,6 +124,7 @@ pub fn rust_main_init(hart_id: usize) -> ! {
         Frame::ceil(PhysAddr::from(ekernel as usize)).into(),
         Frame::floor(PhysAddr::from(MEMORY_END)).into(),
     );
+    mm::kernel_activate();
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
     fs::list_apps();
     // lkm::init();
@@ -150,23 +151,17 @@ pub fn rust_main_init(hart_id: usize) -> ! {
 
 #[no_mangle]
 pub fn rust_main_init_other(hart_id: usize) -> ! {
+    mm::kernel_activate();
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
     rust_main(hart_id)
 }
 
-static mut EXECUTOR: Executor = Executor::new();
-
-
 #[no_mangle]
 pub fn rust_main(_hart_id: usize) -> ! {
-    Asyncc::reset(unsafe { &EXECUTOR });
     // let file = open_file("shell", OpenFlags::RDONLY);
     // let _process = task::Process::new(&file.unwrap().read_all()).unwrap();
     // let _process = task::Process::new_kp().unwrap();
-    unsafe {
-        Asyncc::set_cause(asyncc::Cause::Finish);
-        trampoline::asyncc_entry();
-    }
+    // trampoline::asyncc_entry();
     panic!("Unreachable in rust_main!");
 }
 

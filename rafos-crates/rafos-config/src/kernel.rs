@@ -46,6 +46,22 @@ pub const CLOCK_FREQ: usize = 12500000;
 
 
 /// The Asyncc Controller base address
-pub const ASYNCC_ADDR: usize = MEMORY_END + 0x1000;
+pub const ASYNCC_ADDR: usize = 0xf000000;
 ///
 pub const ASYNCC_LEN: usize = 0x10000;
+
+/// The Executor base address
+pub const EXECUTOR_BASE_ADDR: usize = 0x9600_0000;
+
+/// MMIO
+#[cfg(feature = "board_qemu")]
+pub const MMIO: &[(usize, usize)] = &[
+    (0x1000_6000,   0x3000),        // virtio
+    (ASYNCC_ADDR,   0x1000000)      // lite executor
+];
+
+#[cfg(feature = "board_axu15eg")]
+pub const MMIO: &[(usize, usize)] = &[
+    (0x6000_0000,   0x200_0000),        // virtio
+    (0xf000000,     0x1000000)      // lite executor
+];

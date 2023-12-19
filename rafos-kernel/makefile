@@ -1,5 +1,5 @@
 # Building
-QEMU := /home/zfl/software/uintr-qemu/riscv64-softmmu/qemu-system-riscv64
+QEMU := /home/zfl/workspace/async-task-scheduler/qemu/build/riscv64-softmmu/qemu-system-riscv64
 
 TARGET := riscv64gc-unknown-linux-gnu
 MODE := release

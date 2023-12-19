@@ -4,6 +4,7 @@ mod kernel;
 pub mod vma;
 
 use alloc::{collections::BTreeMap, string::String, sync::Arc, vec::Vec};
+use asyncc::Executor;
 use core::{fmt, mem::size_of, slice};
 use ubuf::UserBuffer;
 
@@ -14,7 +15,7 @@ pub use file::MmapFile;
 pub use flags::*;
 use vma::VMArea;
 use mmrv::*;
-pub use kernel::KERNEL_SPACE;
+pub use kernel::*;
 
 
 
@@ -46,6 +47,9 @@ pub struct MM {
 
     /// Heap pointer managed by `sys_brk`.
     pub brk: VirtAddr,
+
+    /// Executor pointer
+    pub executor: Option<&'static Executor>,
 }
 
 extern "C" {
@@ -61,7 +65,7 @@ impl MM {
     /// `Trampoline` is not collected or recorded by VMAs, since this area cannot
     /// be unmapped or modified manually by user. We set the page table flags without
     /// [`PTEFlags::USER_ACCESSIBLE`] so that malicious user cannot jump to this area.
-    pub fn new() -> KernelResult<Self> {
+    pub fn new(is_kernel: bool) -> KernelResult<Self> {
 
         match PageTable::new() {
             Ok(page_table) => {
@@ -74,7 +78,12 @@ impl MM {
                     entry: VirtAddr::zero(),
                     start_brk: VirtAddr::zero(),
                     brk: VirtAddr::zero(),
+                    executor: None,
                 };
+                if mm.alloc_write_type(EXECUTOR_BASE_ADDR.into(), &Executor::new(), is_kernel).is_ok() {
+                    let executor = EXECUTOR_BASE_ADDR as *const usize as *const Executor;
+                    mm.executor = Some(unsafe { &*executor });
+                }
                 mm.page_table
                     .map(
                         VirtAddr::from(TRAMPOLINE).into(),
@@ -141,6 +150,7 @@ impl MM {
             entry: self.entry,
             start_brk: self.start_brk,
             brk: self.brk,
+            executor: self.executor.clone()
         })
     }
 
@@ -399,9 +409,16 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
     /// - `data`: reference of data type.
-    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T) -> KernelResult {
+    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T, is_kernel: bool) -> KernelResult {
         let size = size_of::<T>();
         let end_va = va + size;
+        if self.alloc_frame_range(va, end_va).is_err() {
+            let mut flags = VMFlags::READ | VMFlags::WRITE;
+            if !is_kernel {
+                flags |= VMFlags::USER;
+            }
+            self.alloc_vma(va, end_va, flags, false, None)?;
+        }
         self.alloc_frame_range(va, end_va)?;
         let data = unsafe { slice::from_raw_parts(data as *const T as *const _, size) };
         unsafe { self.write_vma(data, va, end_va)? };
