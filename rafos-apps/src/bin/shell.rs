@@ -66,7 +66,6 @@ pub fn main() -> i32 {
                     args_addr.push(0 as *const u8);
                     let pid = fork();
                     if pid == 0 {
-                        log::debug!("pid {}", pid);
                         // input redirection
                         if !input.is_empty() {
                             let input_fd = open(input.as_str(), OpenFlags::RDONLY);
@@ -99,7 +98,6 @@ pub fn main() -> i32 {
                         }
                         unreachable!();
                     } else {
-                        log::debug!("pid {}", pid);
                         let mut exit_code: i32 = 0;
                         // log::debug!("exit_code_ptr {:#X}", &mut exit_code as *mut i32 as usize);
                         let exit_pid = waitpid(pid as usize, &mut exit_code);

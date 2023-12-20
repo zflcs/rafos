@@ -104,7 +104,7 @@ pub fn cpu() -> &'static mut CPUContext {
 ///
 /// [`TaskContext`] cannot be modified by other tasks, thus we can access it with raw pointer.
 pub unsafe fn curr_ctx() -> *const TaskContext {
-    &*cpu().curr.as_ref().unwrap().context.lock()
+    &cpu().curr.as_ref().unwrap().inner().context
 }
 
 /// IDLE task context on this CPU.
@@ -136,7 +136,7 @@ pub unsafe fn idle() -> ! {
         if let Some(task) = task_manager.fetch() {
             let next_ctx = {
                 *task.state.lock() = TaskState::RUNNING;
-                let ctx = &*task.context.as_mut_ptr() as *const TaskContext;
+                let ctx = &task.inner().context as *const TaskContext;
                 ctx
             };
             log::trace!("Run {:?}", task);
@@ -172,9 +172,9 @@ pub unsafe fn idle() -> ! {
 pub unsafe fn do_exit(exit_code: i32) {
     let curr = cpu().curr.as_ref().unwrap();
     let _curr_ctx = {
-        curr.exit_code.store(exit_code, core::sync::atomic::Ordering::Relaxed);
+        curr.inner().exit_code = exit_code;
         *curr.state.lock() = TaskState::ZOMBIE;
-        &*curr.context.as_mut_ptr() as *const TaskContext
+        &curr.inner().context as *const TaskContext
     };
     log::trace!("{:?} exited with code {}", curr, exit_code);
 
@@ -190,9 +190,9 @@ pub unsafe fn do_yield() {
     let curr = cpu().curr.as_ref().unwrap();
     let curr_ctx = {
         *curr.state.lock() = TaskState::RUNNABLE;
-        &*curr.context.as_mut_ptr() as *const TaskContext
+        &curr.inner().context as *const TaskContext
     };
-    log::debug!("{:#?} suspended", curr);
+    log::trace!("{:#?} suspended", curr);
 
     // Saves and restores CPU local variable, intena.
     let intena = CPUs[hart_id()].intena;
@@ -231,12 +231,12 @@ pub unsafe fn do_yield() {
 pub fn handle_zombie(task: Arc<Task>) {
     for child in task.children.lock().iter() {
         *child.parent.lock() = Some(Arc::downgrade(&IDLE_TASK));
-        IDLE_TASK.children.lock().push(child.clone());
+        IDLE_TASK.children.lock().push_back(child.clone());
     }
     task.children.lock().clear();
     let orphan = task.parent.lock().is_none();
 
     if orphan {
-        IDLE_TASK.children.lock().push(task);
+        IDLE_TASK.children.lock().push_back(task);
     }
 }

@@ -11,7 +11,7 @@ impl SyscallTrait for SyscallImpl {
         // Translate user buffer into kernel string.
         let buf = curr.mm().get_buf_mut(VirtAddr::from(buf_ptr), buf_len)?;
         // Get the file with the given file descriptor.
-        let file = curr.fd_table.lock().get(fd)?;
+        let file = curr.files().get(fd)?;
         file.write(buf).map_err(|_| Errno::EIO)
     }
 
@@ -20,7 +20,7 @@ impl SyscallTrait for SyscallImpl {
         // Get the real buffer translated into physical address.
         let buf = curr.mm().get_buf_mut(VirtAddr::from(buf_ptr), buf_len)?;
         // Get the file with the given file descriptor.
-        let file = curr.fd_table.lock().get(fd)?;
+        let file = curr.files().get(fd)?;
         file.read(buf).map_err(|_| Errno::EIO)
     }
 

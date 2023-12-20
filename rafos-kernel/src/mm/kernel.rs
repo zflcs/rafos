@@ -33,7 +33,7 @@ pub fn kernel_activate() {
 
 /// Without kernel stacks.
 fn new_kernel() -> Result<MM, KernelError> {
-    let mut mm = MM::new(true)?;
+    let mut mm = MM::new()?;
     // Map kernel .text section
     mm.alloc_write_vma(
         None,

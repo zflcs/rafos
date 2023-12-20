@@ -3,7 +3,7 @@
 #![feature(lang_items)]
 #![allow(internal_features)]
 
-const MAX_CHILD: usize = 1;
+const MAX_CHILD: usize = 40;
 
 #[macros::entry]
 pub fn main() -> i32 {
@@ -27,5 +27,5 @@ pub fn main() -> i32 {
         panic!("wait got too many");
     }
     println!("forktest pass.");
-    32
+    0
 }

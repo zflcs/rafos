@@ -62,7 +62,7 @@ pub const ASYNCC_ADDR: usize = 0xf000000;
 pub const ASYNCC_LEN: usize = 0x10000;
 
 /// The Executor base address
-pub const EXECUTOR_BASE_ADDR: usize = 0x9600_0000;
+pub const EXECUTOR_BASE_ADDR: usize = 0x8600_0000;
 
 /// MMIO
 #[cfg(feature = "board_qemu")]

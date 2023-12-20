@@ -67,7 +67,7 @@ pub fn user_trap_handler() -> ! {
         }
         Trap::Exception(Exception::StorePageFault) => {
             let curr = cpu().curr.as_ref().unwrap();
-            let mut curr_mm = unsafe { &mut *curr.mm.as_mut_ptr() };
+            let mut curr_mm = curr.mm();
             trap_info();
             if let Err(err) = do_handle_page_fault(
                 &mut curr_mm,

@@ -1,10 +1,20 @@
-use core::sync::atomic::AtomicI32;
-
+use core::cell::SyncUnsafeCell;
+use alloc::collections::LinkedList;
 use super::*;
 
 use kernel_sync::{SpinLock, SpinLockGuard};
-use alloc::{vec::Vec, sync::{Arc, Weak}, string::{String, ToString}};
+use alloc::{sync::{Arc, Weak}, string::{String, ToString}};
 use crate::{mm::{MM, KERNEL_SPACE}, fs::FDManager, KernelResult, loader, trampoline::*};
+
+pub struct TaskInner {
+    pub exit_code: i32,
+    pub context: TaskContext,
+    pub kstack: KernelStack,
+    pub mm: Arc<SpinLock<MM>>,
+    pub files: Arc<SpinLock<FDManager>>,
+}
+
+unsafe impl Send for TaskInner {}
 
 pub struct Task {
     // immutable
@@ -14,13 +24,9 @@ pub struct Task {
     // mutable
     pub name: SpinLock<String>,
     pub state: SpinLock<TaskState>,
-    pub context: SpinLock<TaskContext>,
-    pub kstack: SpinLock<KernelStack>,
-    pub mm: Arc<SpinLock<MM>>,
     pub parent: SpinLock<Option<Weak<Task>>>,
-    pub children: SpinLock<Vec<Arc<Task>>>,
-    pub exit_code: AtomicI32,
-    pub fd_table: SpinLock<FDManager>,
+    pub children: SpinLock<LinkedList<Arc<Task>>>,
+    pub inner: SyncUnsafeCell<TaskInner>,
 }
 
 impl Task {
@@ -30,21 +36,21 @@ impl Task {
             pid: 0,
             name: SpinLock::new("idle".to_string()),
             state: SpinLock::new(TaskState::RUNNABLE),
-            mm: Arc::new(SpinLock::new(MM::new(false).unwrap())),
             parent: SpinLock::new(None),
-            children: SpinLock::new(Vec::new()),
-            exit_code: AtomicI32::new(0),
-            fd_table: SpinLock::new(FDManager::new()),
+            children: SpinLock::new(LinkedList::new()),
             trapframe_tracker: None,
-            context: SpinLock::new(TaskContext::zero()),
-            kstack: SpinLock::new(KernelStack::new()?),
+            inner: SyncUnsafeCell::new(TaskInner {
+                exit_code: 0,
+                context: TaskContext::zero(),
+                kstack: KernelStack::new()?,
+                mm: Arc::new(SpinLock::new(MM::new()?)),
+                files: Arc::new(SpinLock::new(FDManager::new())),
+            }),
         })
     }
 
-    
-    // pub fn new() -> Result<TaskRef, KernelError> {
     pub fn new(elf_data: &[u8]) -> KernelResult<Self> {
-        let mut mm = MM::new(false)?;
+        let mut mm = MM::new()?;
         let sp = loader::from_elf(elf_data, &mut mm)?;
         log::debug!("{:?}", mm);
         let kstack = KernelStack::new()?;
@@ -67,13 +73,15 @@ impl Task {
             trapframe_tracker: Some(trapframe_tracker),
             name: SpinLock::new("new".to_string()),
             state: SpinLock::new(TaskState::RUNNABLE),
-            context: SpinLock::new(TaskContext::new(user_trap_return as usize, kstack_base)),
-            kstack: SpinLock::new(kstack),
-            mm: Arc::new(SpinLock::new(mm)),
             parent: SpinLock::new(None),
-            children: SpinLock::new(Vec::new()),
-            exit_code: AtomicI32::new(0),
-            fd_table: SpinLock::new(FDManager::new()),
+            children: SpinLock::new(LinkedList::new()),
+            inner: SyncUnsafeCell::new(TaskInner {
+                exit_code: 0,
+                context: TaskContext::new(user_trap_return as usize, kstack_base),
+                kstack,
+                mm: Arc::new(SpinLock::new(mm)),
+                files: Arc::new(SpinLock::new(FDManager::new())),
+            }),
         };
         Ok(task)
     }
@@ -82,8 +90,18 @@ impl Task {
         TrapFrame::from(self.trapframe_tracker.as_ref().unwrap().0.start_address())
     }
 
+    /// Mutable access to [`TaskInner`].
+    pub fn inner(&self) -> &mut TaskInner {
+        unsafe { &mut *self.inner.get() }
+    }
+
     pub fn mm(&self) -> SpinLockGuard<MM> {
-        self.mm.lock()
+        self.inner().mm.lock()
+    }
+
+    /// Acquires inner lock to modify [`FDManager`].
+    pub fn files(&self) -> SpinLockGuard<FDManager> {
+        self.inner().files.lock()
     }
 
     pub fn state(&self) -> TaskState {

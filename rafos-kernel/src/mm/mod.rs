@@ -65,8 +65,7 @@ impl MM {
     /// `Trampoline` is not collected or recorded by VMAs, since this area cannot
     /// be unmapped or modified manually by user. We set the page table flags without
     /// [`PTEFlags::USER_ACCESSIBLE`] so that malicious user cannot jump to this area.
-    pub fn new(is_kernel: bool) -> KernelResult<Self> {
-
+    pub fn new() -> KernelResult<Self> {
         match PageTable::new() {
             Ok(page_table) => {
                 let mut mm = Self {
@@ -80,10 +79,6 @@ impl MM {
                     brk: VirtAddr::zero(),
                     executor: None,
                 };
-                if mm.alloc_write_type(EXECUTOR_BASE_ADDR.into(), &Executor::new(), is_kernel).is_ok() {
-                    let executor = EXECUTOR_BASE_ADDR as *const usize as *const Executor;
-                    mm.executor = Some(unsafe { &*executor });
-                }
                 mm.page_table
                     .map(
                         VirtAddr::from(TRAMPOLINE).into(),
@@ -159,7 +154,9 @@ impl MM {
     /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
     /// when fork is executed.
     pub fn fork(&mut self) -> KernelResult<Self> {
-        let mut mm = Self::new(false)?;
+        log::trace!("fork mm");
+        let mut mm = MM::new()?;
+        log::trace!("{:?}", mm);
         for vma in self.vma_list.iter() {
             if let Some(vma) = vma {
                 if vma.flags.contains(VMFlags::WRITE) {
@@ -450,14 +447,11 @@ impl MM {
     /// # Argument
     /// - `va`: starting virtual address where the data type locates.
     /// - `data`: reference of data type.
-    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T, is_kernel: bool) -> KernelResult {
+    pub fn alloc_write_type<T: Sized>(&mut self, va: VirtAddr, data: &T) -> KernelResult {
         let size = size_of::<T>();
         let end_va = va + size;
         if self.alloc_frame_range(va, end_va).is_err() {
-            let mut flags = VMFlags::READ | VMFlags::WRITE;
-            if !is_kernel {
-                flags |= VMFlags::USER;
-            }
+            let flags = VMFlags::READ | VMFlags::WRITE;
             self.alloc_vma(va, end_va, flags, false, None)?;
         }
         self.alloc_frame_range(va, end_va)?;

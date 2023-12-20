@@ -9,9 +9,9 @@ mod kstack;
 mod trapframe;
 mod context;
 
-use core::sync::atomic::AtomicI32;
+use core::cell::SyncUnsafeCell;
 
-use alloc::{sync::Arc, string::ToString, vec::Vec};
+use alloc::{sync::Arc, string::ToString, collections::LinkedList};
 use errno::Errno;
 use kernel_sync::SpinLock;
 use mmrv::*;
@@ -63,9 +63,9 @@ bitflags::bitflags! {
 /// A helper for [`syscall_interface::SyscallProc::clone`]
 pub fn do_fork() -> SyscallResult {
     let curr = cpu().curr.as_ref().unwrap();
-    log::debug!("FORK {:?}", &curr);
-    let mut mm = curr.mm().clone()?;
-    log::debug!("{:?}", mm);
+    log::trace!("FORK {:?}", &curr);
+    let mm = Arc::new(SpinLock::new(curr.mm().fork()?));
+    log::trace!("{:?}", mm);
     // New kernel stack
     let kstack = KernelStack::new()?;
     let tid = TidHandle::new();
@@ -74,6 +74,7 @@ pub fn do_fork() -> SyscallResult {
     
     // Init trapframe
     let trapframe_tracker = {
+        let mut mm = mm.lock();
         let trapframe_tracker = init_trapframe(&mut mm, tid_num)?;
         let trapframe = TrapFrame::from(trapframe_tracker.0.start_address());
         trapframe.copy_from(curr.trapframe(), 0, kstack_base);
@@ -85,17 +86,18 @@ pub fn do_fork() -> SyscallResult {
         trapframe_tracker: Some(trapframe_tracker),
         name: SpinLock::new(curr.name.lock().to_string()),
         state: SpinLock::new(TaskState::RUNNABLE),
-        context: SpinLock::new(TaskContext::new(user_trap_return as usize, kstack_base)),
-        kstack: SpinLock::new(kstack),
-        mm: Arc::new(SpinLock::new(mm)),
         parent: SpinLock::new(Some(Arc::downgrade(&curr))),
-        children: SpinLock::new(Vec::new()),
-        exit_code: AtomicI32::new(0),
-        fd_table: SpinLock::new(FDManager::new()),
+        children: SpinLock::new(LinkedList::new()),
+        inner: SyncUnsafeCell::new(TaskInner {
+            exit_code: 0,
+            context:  TaskContext::new(user_trap_return as usize, kstack_base),
+            kstack,
+            mm,
+            files: Arc::new(SpinLock::new(FDManager::new())),
+        })
     });
-
-    curr.children.lock().push(new_task.clone());
-    TASK_MANAGER.lock().add(new_task);
+    TASK_MANAGER.lock().add(new_task.clone());
+    curr.children.lock().push_back(new_task);
     Ok(tid_num)
 }
 
@@ -123,7 +125,7 @@ pub fn do_wait(pid: isize, exit_code_ptr: usize) -> SyscallResult {
         if let Some((idx, _)) = pair {
             let child = children.remove(idx);
             let pid = child.tid.0;
-            let exit_code = child.exit_code.load(core::sync::atomic::Ordering::Relaxed);
+            let exit_code = child.inner().exit_code;
             write_user!(curr.mm(), VirtAddr::from(exit_code_ptr), exit_code, i32)?;
             log::trace!("wait {}, exit_code_ptr {:#X} exit_code: {}", pid, exit_code_ptr, exit_code);
             return Ok(pid);
@@ -142,13 +144,13 @@ pub fn do_exec(elf_data: &[u8]) -> KernelResult {
     log::trace!("EXEC {:?} ", &curr);
 
     // memory mappings are not preserved
-    let mut mm = MM::new(false)?;
+    let mut mm = MM::new()?;
     let vsp = loader::from_elf(elf_data, &mut mm)?;
 
     // re-initialize kernel stack
     let kstack = KernelStack::new()?;
     let kstack_base = kstack.base();
-    *curr.kstack.lock() = kstack;
+    curr.inner().kstack = kstack;
 
     // re-initialize trapframe
     let trapframe = curr.trapframe();
@@ -166,9 +168,9 @@ pub fn do_exec(elf_data: &[u8]) -> KernelResult {
             PTEFlags::READABLE | PTEFlags::WRITABLE | PTEFlags::VALID,
         )
         .map_err(|_| KernelError::PageTableInvalid)?;
-    log::debug!("{:?}", mm);
-    *curr.mm() = mm;
+    log::trace!("{:?}", mm);
 
-    *curr.context.lock() = TaskContext::new(user_trap_return as usize, kstack_base);
+    curr.inner().mm = Arc::new(SpinLock::new(mm));
+    curr.inner().context = TaskContext::new(user_trap_return as usize, kstack_base);
     Ok(())
 }
