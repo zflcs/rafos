@@ -1,6 +1,7 @@
+use alloc::vec::Vec;
 use errno::Errno;
 use syscall::{SyscallResult, SyscallTrait};
-use crate::{cpu::*, task::{do_fork, do_wait, do_exec, do_thread_create, do_wait_tid}, fs::{open_file, OpenFlags}};
+use crate::{cpu::*, task::{do_fork, do_wait, do_exec, do_thread_create, do_wait_tid}, fs::{open_file, OpenFlags}, read_user};
 use mmrv::*;
 
 use super::SyscallImpl;
@@ -41,16 +42,25 @@ impl SyscallTrait for SyscallImpl {
         do_wait(pid as _, exit_code_ptr)
     }
 
-    fn sys_exec(path_ptr:usize, _args_ptr:usize) -> SyscallResult {
+    fn sys_exec(path_ptr:usize, args_ptr:usize) -> SyscallResult {
         let curr = cpu().curr.as_ref().unwrap();
         let path = curr.mm().get_str(VirtAddr::from(path_ptr))?;
-        log::trace!("{:?}", path);
-        let elf_data = open_file(&path, OpenFlags::RDONLY).unwrap().read_all();
-        if do_exec(&elf_data).is_err() {
-            Err(Errno::ENOEXEC)
-        } else {
-            Ok(0)
+        // log::debug!("{:?} {:#X?}", path, args_ptr);
+        // get argument list
+        let mut args = Vec::new();
+        let mut argv = args_ptr;
+        let mut argc: usize = 0;
+        let mut curr_mm = curr.mm();
+        loop {
+            read_user!(curr_mm, VirtAddr::from(argv), argc, usize)?;
+            if argc == 0 {
+                break;
+            }
+            args.push(curr_mm.get_str(VirtAddr::from(argc))?);
+            argv += core::mem::size_of::<usize>();
         }
+        let elf_data = open_file(&path, OpenFlags::RDONLY).unwrap().read_all();
+        do_exec(&elf_data, args)
     }
 
     fn sys_thread_create(entry:usize, arg:usize) -> SyscallResult {

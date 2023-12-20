@@ -11,11 +11,11 @@ const CR: u8 = 0x0du8;
 const DL: u8 = 0x7fu8;
 const BS: u8 = 0x08u8;
 
-use alloc::{string::String, vec::Vec};
+use alloc::string::String;
 
 
 #[macros::entry]
-pub fn main() -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> i32 {
     println!("Rust user shell");
     let mut line: String = String::new();
     print!(">> ");

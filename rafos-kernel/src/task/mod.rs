@@ -11,8 +11,8 @@ mod context;
 
 use core::cell::SyncUnsafeCell;
 
-use alloc::{sync::Arc, string::ToString, collections::LinkedList};
-use config::{USER_STACK_SIZE, USER_STACK_BASE, ADDR_ALIGN};
+use alloc::{sync::Arc, string::{ToString, String}, collections::LinkedList, vec::Vec};
+use config::{USER_STACK_SIZE, ADDR_ALIGN};
 use errno::Errno;
 use kernel_sync::SpinLock;
 use mmrv::*;
@@ -109,7 +109,7 @@ pub fn do_thread_create(entry:usize, arg:usize) -> SyscallResult {
     let mm = curr.inner().mm.clone();
     let files = curr.inner().files.clone();
     let pid = curr.pid;
-    log::debug!("{:?}", mm);
+    log::trace!("{:?}", mm);
     // New kernel stack
     let kstack = KernelStack::new()?;
     let tid = TidHandle::new();
@@ -138,6 +138,7 @@ pub fn do_thread_create(entry:usize, arg:usize) -> SyscallResult {
             entry, 
             (start_va + USER_STACK_SIZE - ADDR_ALIGN).into()
         );
+        trapframe.set_a0(arg);
         trapframe_tracker
     };
     let new_task = Arc::new(Task {
@@ -232,13 +233,13 @@ pub fn do_wait_tid(tid: usize) -> SyscallResult {
 }
 
 /// A helper for [`syscall_interface::SyscallProc::execve`]
-pub fn do_exec(elf_data: &[u8]) -> KernelResult {
+pub fn do_exec(elf_data: &[u8], args: Vec<String>) -> SyscallResult {
     let curr = cpu().curr.as_ref().unwrap();
     log::trace!("EXEC {:?} ", &curr);
-
+    let args_len = args.len();
     // memory mappings are not preserved
     let mut mm = MM::new()?;
-    let vsp = loader::from_elf(elf_data, &mut mm)?;
+    let vsp = loader::from_elf(elf_data, &mut mm, args)?;
 
     // re-initialize kernel stack
     let kstack = KernelStack::new()?;
@@ -254,6 +255,7 @@ pub fn do_exec(elf_data: &[u8]) -> KernelResult {
         mm.entry.value(),
         vsp.into(),
     );
+    trapframe.set_a1(vsp.into());
     mm.page_table
         .map(
             Page::from(VirtAddr::from(trapframe_base(curr.tid.0))),
@@ -265,5 +267,5 @@ pub fn do_exec(elf_data: &[u8]) -> KernelResult {
 
     curr.inner().mm = Arc::new(SpinLock::new(mm));
     curr.inner().context = TaskContext::new(user_trap_return as usize, kstack_base);
-    Ok(())
+    Ok(args_len)
 }

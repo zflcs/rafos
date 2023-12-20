@@ -1,4 +1,10 @@
 
+mod flags;
+mod init;
+
+use init::*;
+use flags::*;
+use alloc::{vec::Vec, string::String, collections::BTreeMap};
 use xmas_elf::{
     header,
     program::{self, SegmentData},
@@ -13,7 +19,7 @@ use config::*;
 
 
 /// Create address space from elf.
-pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<VirtAddr> {
+pub fn from_elf(elf_data: &[u8], mm: &mut MM, args: Vec<String>) -> KernelResult<VirtAddr> {
     let elf = ElfFile::new(elf_data).unwrap();
     let elf_hdr = elf.header;
 
@@ -116,6 +122,29 @@ pub fn from_elf(elf_data: &[u8], mm: &mut MM) -> KernelResult<VirtAddr> {
         ustack_base.into(),
         VMFlags::READ | VMFlags::WRITE | VMFlags::USER,
     )?;
-    let vsp = VirtAddr::from(ustack_base);
+    let mut vsp = VirtAddr::from(ustack_base);
+    let sp = mm.translate(vsp)?;
+    let init_stack = InitStack::serialize(
+        InitInfo {
+            args,
+            // TODO
+            envs: Vec::new(),
+            auxv: {
+                let mut at_table = BTreeMap::new();
+                at_table.insert(
+                    AuxType::AT_PHDR,
+                    elf_base_va + elf_hdr.pt2.ph_offset() as usize,
+                );
+                at_table.insert(AuxType::AT_PHENT, elf_hdr.pt2.ph_entry_size() as usize);
+                at_table.insert(AuxType::AT_PHNUM, elf_hdr.pt2.ph_count() as usize);
+                at_table.insert(AuxType::AT_RANDOM, 0);
+                at_table.insert(AuxType::AT_PAGESZ, PAGE_SIZE);
+                at_table
+            },
+        },
+        sp,
+        vsp,
+    );
+    vsp -= init_stack.len();
     Ok(vsp)
 }

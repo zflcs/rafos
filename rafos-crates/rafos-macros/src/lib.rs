@@ -26,20 +26,37 @@ pub fn entry(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[macro_use]
         extern crate console;
         extern crate alloc;
-        use alloc::boxed::Box;
+        use alloc::vec::Vec;
         extern crate syscall;
         use syscall::*;
 
         #[no_mangle]
         #[link_section = ".text.entry"]
-        pub fn _start() -> ! {
+        pub fn _start(argc: usize, argv: usize) -> ! {
             console::init(option_env!("LOG"));
             init_heap();
-            sys_exit(main() as usize);
+            let mut v: Vec<&'static str> = Vec::new();
+            // log::debug!("{} {:#X}", argc, argv);
+            for i in 0..argc {
+                let str_start =
+                    unsafe { ((argv + i * core::mem::size_of::<usize>()) as *const usize).read_volatile() };
+                // println!("get start {:x}", str_start);
+                let len = (0usize..)
+                    .find(|i| unsafe { ((str_start + *i) as *const u8).read_volatile() == 0 })
+                    .unwrap();
+                // println!("get_len {}", len);
+                v.push(
+                    core::str::from_utf8(unsafe {
+                        core::slice::from_raw_parts(str_start as *const u8, len)
+                    })
+                    .unwrap(),
+                );
+            }
+            sys_exit(main(argc, v.as_slice()) as usize);
             panic!()
         }
 
-        fn main() -> isize {
+        fn main(argc: usize, argv: &[&str]) -> isize {
             #(#statements)*
         }
 

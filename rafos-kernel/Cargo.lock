@@ -457,6 +457,7 @@ dependencies = [
  "easy-fs",
  "kernel-sync",
  "log",
+ "numeric-enum-macro",
  "rafos-config",
  "rafos-console",
  "rafos-errno",

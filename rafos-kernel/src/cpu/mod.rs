@@ -1,6 +1,6 @@
 use alloc::{
     collections::{vec_deque, VecDeque},
-    sync::Arc,
+    sync::Arc, vec, string::ToString,
 };
 use config::CPU_NUM;
 use console::hart_id;
@@ -82,7 +82,7 @@ pub static TASK_MANAGER: Lazy<SpinLock<QueueScheduler>> =
     Lazy::new(|| {
         let inode = open_file("shell", OpenFlags::RDONLY).unwrap();
         let elf_data = inode.read_all();
-        let task = Arc::new(Task::new(&elf_data).unwrap());
+        let task = Arc::new(Task::new(&elf_data, vec!["shell".to_string()]).unwrap());
         let mut scheduler = QueueScheduler::new();
         scheduler.add(task);
         SpinLock::new(scheduler)

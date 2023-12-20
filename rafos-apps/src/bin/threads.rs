@@ -7,7 +7,7 @@ use alloc::vec;
 
 
 #[macros::entry]
-pub fn main() -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> i32 {
     let v = vec![
         thread_create(thread_a as usize, 0),
         thread_create(thread_b as usize, 0),

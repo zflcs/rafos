@@ -6,7 +6,7 @@
 const MAX_CHILD: usize = 40;
 
 #[macros::entry]
-pub fn main() -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> i32 {
     for i in 0..MAX_CHILD {
         let pid = fork();
         if pid == 0 {

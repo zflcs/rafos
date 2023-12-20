@@ -49,10 +49,11 @@ impl Task {
         })
     }
 
-    pub fn new(elf_data: &[u8]) -> KernelResult<Self> {
+    pub fn new(elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
         let mut mm = MM::new()?;
-        let sp = loader::from_elf(elf_data, &mut mm)?;
-        log::debug!("{:?}", mm);
+        let args_len = args.len();
+        let vsp = loader::from_elf(elf_data, &mut mm, args)?;
+        log::trace!("{:?}", mm);
         let kstack = KernelStack::new()?;
         let kstack_base = kstack.base();
         let tid = TidHandle::new();
@@ -65,8 +66,10 @@ impl Task {
             kstack_base, 
             user_trap_handler as usize, 
             mm.entry.value(), 
-            sp.value()
+            vsp.value()
         );
+        trapframe.set_a0(args_len);
+        trapframe.set_a1(vsp.into());
         let task = Self {
             tid,
             pid: tid_num,

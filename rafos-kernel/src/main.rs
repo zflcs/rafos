@@ -121,7 +121,6 @@ pub fn rust_main_init(hart_id: usize) -> ! {
     );
     mm::kernel_activate();
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
-    fs::list_apps();
     // lkm::init();
     
     // net::init();
@@ -141,6 +140,7 @@ pub fn rust_main_init(hart_id: usize) -> ! {
             }
         }
     }
+    fs::list_apps();
     rust_main(hart_id)
 }
 
