@@ -6,7 +6,7 @@ pub fn dup(fd: usize) -> isize {
 }
 
 pub fn open(path: &str, flags: OpenFlags) -> isize {
-    sys_open(path.as_ptr() as usize, flags.bits() as usize)
+    sys_open_at(path.as_ptr() as usize, flags.bits() as usize)
 }
 
 pub fn close(fd: usize) -> isize {
@@ -50,15 +50,15 @@ impl TimeVal {
 #[allow(unused_variables)]
 pub fn get_time() -> isize {
     let time = TimeVal::new();
-    match sys_get_time(&time as *const _ as usize, 0) {
+    match sys_get_time_of_day(&time as *const _ as usize) {
         0 => ((time.sec & 0xffff) * 1000 + time.usec / 1000) as isize,
         _ => -1,
     }
 }
 
-pub fn get_time_us() -> isize {
+pub fn get_time_of_day() -> isize {
     let time = TimeVal::new();
-    match sys_get_time(&time as *const _ as usize, 0) {
+    match sys_get_time_of_day(&time as *const _ as usize) {
         0 => ((time.sec & 0xffff) * 1000_000 + time.usec) as isize,
         _ => -1,
     }
@@ -119,9 +119,6 @@ pub fn mailwrite(pid: usize, buf: &[u8]) -> isize {
     sys_mail_write(pid, buf.as_ptr() as usize, buf.len())
 }
 
-pub fn flush_trace() -> isize {
-    sys_flush_trace()
-}
 
 pub fn init_user_trap(tid: usize) -> isize {
     sys_init_user_trap(tid)
@@ -173,9 +170,6 @@ pub fn waittid(tid: usize) -> isize {
     
 }
 
-pub fn hang() {
-    sys_hang();
-}
 
 
 // pub fn sys_semaphore_create(res_count: usize) -> isize {

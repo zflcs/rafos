@@ -42,6 +42,11 @@ impl SyscallTrait for SyscallImpl {
         Ok(read_len)
     }
 
+    fn sys_close(fd:usize) -> SyscallResult {
+        cpu().curr.as_ref().unwrap().files().remove(fd)?;
+        Ok(0)
+    }
+
     fn sys_dup(fd:usize) -> SyscallResult {
         Ok(0)
     }
