@@ -226,7 +226,6 @@ impl VMArea {
             || (!pte.flags().contains(PTEFlags::WRITABLE) && self.flags.contains(VMFlags::WRITE))
         {
             let index = page.number() - Page::from(self.start_va).number();
-
             let frame = if pte.flags().is_valid() {
                 let old = self.get_frame(index, false)?;
                 // we don't drop the old frame immediately, for it can be allocated again as new frame

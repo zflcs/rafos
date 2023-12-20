@@ -7,13 +7,16 @@ pub static PID_ALLOCATOR: Lazy<SpinLock<RecycleAllocator>> = Lazy::new(|| SpinLo
 
 pub const IDLE_PID: usize = 0;
 
-pub struct PidHandle(pub usize);
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub struct TidHandle(pub usize);
 
-pub fn pid_alloc() -> PidHandle {
-    PidHandle(PID_ALLOCATOR.lock().alloc())
+impl TidHandle {
+    pub fn new() -> Self {
+        Self(PID_ALLOCATOR.lock().alloc())
+    }
 }
 
-impl Drop for PidHandle {
+impl Drop for TidHandle {
     fn drop(&mut self) {
         PID_ALLOCATOR.lock().dealloc(self.0);
     }

@@ -26,8 +26,8 @@ easy-fs = { path = "../rafos-crates/easy-fs" }
 mmrv = { path = "../rafos-crates/rafos-mmrv", package = "rafos-mmrv" }
 ubuf = { path = "../rafos-crates/rafos-ubuf", package = "rafos-ubuf" }
 id-alloc = { path = "../rafos-crates/rafos-id-alloc", package = "rafos-id-alloc" }
-
 kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }
+syscall = { path = "../rafos-crates/rafos-syscall", package = "rafos-syscall" }
 
 
 [dependencies.smoltcp]

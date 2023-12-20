@@ -8,7 +8,10 @@ edition = "2021"
 [dependencies]
 buddy_system_allocator = "0.9.0"
 asyncc = { path = "../asyncc" }
+console = { path = "../rafos-crates/rafos-console", package = "rafos-console" }
+syscall = { path = "../rafos-crates/rafos-syscall", package = "rafos-syscall", features = ["user"]}
+macros = { path = "../rafos-crates/rafos-macros", package = "rafos-macros" }
+log = "0.4.17"
 
-
-[profile.release]
-opt-level = 0
+# [profile.release]
+# opt-level = 0

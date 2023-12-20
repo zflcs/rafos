@@ -116,7 +116,6 @@ impl MM {
                     frames: vma.frames.clone(),
                     file: vma.file.clone(),
                 };
-
                 // read-only
                 let mut flags = PTEFlags::from(vma.flags);
                 flags.remove(PTEFlags::WRITABLE);
@@ -152,6 +151,48 @@ impl MM {
             brk: self.brk,
             executor: self.executor.clone()
         })
+    }
+
+
+    /// Create a new [`MM`] from cloner.
+    ///
+    /// Uses the copy-on-write technique (COW) to prevent all data of the parent process from being copied
+    /// when fork is executed.
+    pub fn fork(&mut self) -> KernelResult<Self> {
+        let mut mm = Self::new(false)?;
+        for vma in self.vma_list.iter() {
+            if let Some(vma) = vma {
+                if vma.flags.contains(VMFlags::WRITE) {
+                    let len = (vma.end_va - vma.start_va).value();
+                    let pa = vma.frames[0].as_ref().unwrap().start_address().value();
+                    let data = unsafe { core::slice::from_raw_parts(pa as *const u8, len) };
+                    mm.alloc_write_vma(
+                        Some(data),
+                        vma.start_va, 
+                        vma.end_va, 
+                        vma.flags
+                    )?;
+                } else {
+                    let mut new_vma = VMArea {
+                        flags: vma.flags,
+                        start_va: vma.start_va,
+                        end_va: vma.end_va,
+                        frames: vma.frames.clone(),
+                        file: vma.file.clone(),
+                    };
+                    new_vma.map_all(&mut mm.page_table, vma.flags.into(), false)?;
+                    mm.add_vma(new_vma)?;
+                }
+            } else {
+                mm.vma_list.push(None);
+            }
+        }
+        mm.vma_recycled = self.vma_recycled.clone();
+        mm.vma_cache = None;
+        mm.entry = self.entry;
+        mm.start_brk = self.start_brk;
+        mm.brk = self.brk;
+        Ok(mm)
     }
 
     /// A warpper for `translate` in `PageTable`.
@@ -796,25 +837,25 @@ pub fn do_munmap(mm: &mut MM, start: VirtAddr, len: usize) -> KernelResult {
 //     // Err(Errno::EINVAL)
 // }
 
-// /* Trap helpers */
+/* Trap helpers */
 
-// /// A page fault helper for [`crate::trap::user_trap_handler`].
-// ///
-// /// Store page fault might be caused by:
-// /// 1. Frame not allocated yet;
-// /// 2. Unable to write (COW);
-// pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {
-//     mm.get_vma(va, |vma, pt, _| {
-//         if !vma.flags.contains(flags) {
-//             return Err(KernelError::FatalPageFault);
-//         }
+/// A page fault helper for [`crate::trap::user_trap_handler`].
+///
+/// Store page fault might be caused by:
+/// 1. Frame not allocated yet;
+/// 2. Unable to write (COW);
+pub fn do_handle_page_fault(mm: &mut MM, va: VirtAddr, flags: VMFlags) -> KernelResult {
+    mm.get_vma(va, |vma, pt, _| {
+        if !vma.flags.contains(flags) {
+            return Err(KernelError::FatalPageFault);
+        }
 
-//         let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
+        let (_, alloc) = vma.alloc_frame(Page::from(va), pt)?;
 
-//         if !alloc {
-//             return Err(KernelError::FatalPageFault);
-//         }
+        if !alloc {
+            return Err(KernelError::FatalPageFault);
+        }
 
-//         Ok(())
-//     })
-// }
+        Ok(())
+    })
+}

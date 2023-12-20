@@ -3,8 +3,19 @@
 
 /// kernel stack size
 pub const KERNEL_STACK_SIZE: usize = 0x4000;
+
+/// Kernel stack pages
+pub const KERNEL_STACK_PAGES: usize = KERNEL_STACK_SIZE >> PAGE_SIZE_BITS;
+
+/// Address alignment
+pub const ADDR_ALIGN: usize = core::mem::size_of::<usize>();
+
 /// kernel heap size
 pub const KERNEL_HEAP_SIZE: usize = 0x80_0000;
+
+/// Relocatable file address
+pub const ELF_BASE_RELOCATE: usize = 0x8000_0000;
+
 /// the amount of cpu
 pub const CPU_NUM: usize = 4;
 /// the physical memory end

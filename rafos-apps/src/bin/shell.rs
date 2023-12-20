@@ -1,117 +1,132 @@
 #![no_std]
 #![no_main]
-#![feature(lang_items, noop_waker)]
-#![allow(internal_features, non_snake_case)]
+#![feature(lang_items)]
+#![allow(internal_features)]
 
-extern crate alloc;
-use alloc::boxed::Box;
-use asyncc::*;
 
-/// This function need to be defined in kernel or user process. 
-#[link_section = ".text.entry"]
-#[no_mangle]
-pub fn _start(task_ref: Option<TaskRef>) -> Option<TaskRef> {
-    if let Some(task_ref) = task_ref {
-        unsafe {
-            asyncc::Asyncc::set_curr(Some(task_ref));
-            let waker = asyncc::from_task(task_ref);
-            let mut cx = Context::from_waker(&waker);
-            let task = Task::from_ref(task_ref);
-            task.state.store(TaskState::Running as _, Ordering::Relaxed);
-            let fut = &mut *task.fut.as_ptr();
-            let mut future = Pin::new_unchecked(fut.as_mut());
-            match future.as_mut().poll(&mut cx) {
-                Poll::Ready(_) => { 
-                    Asyncc::set_cause(crate::Cause::Finish);
-                    None },
-                Poll::Pending => { 
-                    Asyncc::set_cause(crate::Cause::Await);
-                    task.state.store(TaskState::Pending as _, Ordering::Relaxed);
-                    Some(task.as_ref()) 
-                },
+extern crate macros;
+
+const LF: u8 = 0x0au8;
+const CR: u8 = 0x0du8;
+const DL: u8 = 0x7fu8;
+const BS: u8 = 0x08u8;
+
+use alloc::{string::String, vec::Vec};
+
+
+#[macros::entry]
+pub fn main() -> i32 {
+    println!("Rust user shell");
+    let mut line: String = String::new();
+    print!(">> ");
+    loop {
+        let c = getchar();
+        match c {
+            LF | CR => {
+                println!("");
+                if !line.is_empty() {
+                    let args: Vec<_> = line.as_str().split(' ').collect();
+                    let mut args_copy: Vec<String> = args
+                        .iter()
+                        .map(|&arg| {
+                            let mut string = String::new();
+                            string.push_str(arg);
+                            string
+                        })
+                        .collect();
+
+                    args_copy.iter_mut().for_each(|string| {
+                        string.push('\0');
+                    });
+
+                    // redirect input
+                    let mut input = String::new();
+                    if let Some((idx, _)) = args_copy
+                        .iter()
+                        .enumerate()
+                        .find(|(_, arg)| arg.as_str() == "<\0")
+                    {
+                        input = args_copy[idx + 1].clone();
+                        args_copy.drain(idx..=idx + 1);
+                    }
+
+                    // redirect output
+                    let mut output = String::new();
+                    if let Some((idx, _)) = args_copy
+                        .iter()
+                        .enumerate()
+                        .find(|(_, arg)| arg.as_str() == ">\0")
+                    {
+                        output = args_copy[idx + 1].clone();
+                        args_copy.drain(idx..=idx + 1);
+                    }
+
+                    let mut args_addr: Vec<*const u8> =
+                        args_copy.iter().map(|arg| arg.as_ptr()).collect();
+                    args_addr.push(0 as *const u8);
+                    let pid = fork();
+                    if pid == 0 {
+                        log::debug!("pid {}", pid);
+                        // input redirection
+                        if !input.is_empty() {
+                            let input_fd = open(input.as_str(), OpenFlags::RDONLY);
+                            if input_fd == -1 {
+                                println!("Error when opening file {}", input);
+                                return -4;
+                            }
+                            let input_fd = input_fd as usize;
+                            close(0);
+                            assert_eq!(dup(input_fd), 0);
+                            close(input_fd);
+                        }
+                        // output redirection
+                        if !output.is_empty() {
+                            let output_fd =
+                                open(output.as_str(), OpenFlags::CREATE | OpenFlags::WRONLY);
+                            if output_fd == -1 {
+                                println!("Error when opening file {}", output);
+                                return -4;
+                            }
+                            let output_fd = output_fd as usize;
+                            close(1);
+                            assert_eq!(dup(output_fd), 1);
+                            close(output_fd);
+                        }
+                        // child process
+                        if exec(args_copy[0].as_str(), args_addr.as_slice()) == -1 {
+                            println!("Error when executing!");
+                            return -4;
+                        }
+                        unreachable!();
+                    } else {
+                        log::debug!("pid {}", pid);
+                        let mut exit_code: i32 = 0;
+                        // log::debug!("exit_code_ptr {:#X}", &mut exit_code as *mut i32 as usize);
+                        let exit_pid = waitpid(pid as usize, &mut exit_code);
+                        // println!("user here {}", exit_code);
+                        assert_eq!(pid, exit_pid);
+                        println!("Shell: Process {} exited with code {}", pid, exit_code);
+                    }
+                    line.clear();
+                }
+                print!(">> ");
+            }
+            BS | DL => {
+                if !line.is_empty() {
+                    print!("{}", BS as char);
+                    print!(" ");
+                    print!("{}", BS as char);
+                    line.pop();
+                }
+            }
+            _ => {
+                print!("{}", c as char);
+                line.push(c as char);
             }
         }
-    } else {
-        let executor = asyncc::Asyncc::get_executor();
-        if executor.state.load(Ordering::Relaxed) == ExecutorState::Ready as _ {
-            Asyncc::spawn(Box::new(main(0)), 0, asyncc::TaskType::Other);
-            executor.state.store(ExecutorState::Running as _, Ordering::Relaxed);
-        }
-        None
     }
 }
 
-pub async fn main(args: usize) -> i32 {
-    // let a = alloc::boxed::Box::pin(test());
-    // let waker = Waker::noop();
-    // let mut cx = Context::from_waker(&waker);
-    // a.await
-    // test().await
-    let task = alloc::boxed::Box::new(Help::new());
-    task.await;
-    args as _
-}
-
-struct Help{
-    yield_once: bool,
-}
-
-impl Help {
-    pub fn new() -> Self {
-        Self { yield_once: false }
-    }
-}
-use core::future::Future;
-use core::pin::Pin;
-use core::ptr::NonNull;
-use core::sync::atomic::Ordering;
-use core::task::{Context, Poll};
-impl Future for Help {
-    type Output = i32;
-    fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> core::task::Poll<Self::Output> {
-        if !self.yield_once {
-            self.yield_once = true;
-            core::task::Poll::Pending
-        } else {
-            core::task::Poll::Ready(0)
-        }
-    }
-}
-
-///
-#[lang = "eh_personality"]
-#[no_mangle]
-pub fn rust_eh_personality() {}
-
-#[no_mangle]
-pub fn _Unwind_Resume() {}
 
 
-use core::alloc::GlobalAlloc;
 
-use buddy_system_allocator::LockedHeap;
-struct Global;
-
-#[global_allocator]
-static GLOBAL: Global = Global;
-const USER_HEAP_PTR: usize = 0xFFFFE000;
-
-unsafe impl GlobalAlloc for Global {
-    unsafe fn alloc(&self, layout: core::alloc::Layout) -> *mut u8 {
-        let allocator = &*(USER_HEAP_PTR as *const usize as *const LockedHeap<32>);
-        allocator.lock()
-            .alloc(layout)
-            .ok()
-            .map_or(0 as *mut u8, |allocation| allocation.as_ptr())
-    }
-
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: core::alloc::Layout) {
-        let allocator = &*(USER_HEAP_PTR as *const usize as *const LockedHeap<32>);
-        allocator.lock().dealloc(NonNull::new_unchecked(ptr), layout)
-    }
-}
-
-#[panic_handler]
-fn panic(_info: &core::panic::PanicInfo) -> ! {
-    unreachable!()
-}

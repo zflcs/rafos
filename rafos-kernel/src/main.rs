@@ -2,7 +2,7 @@
 //! 
 #![no_std]
 #![no_main]
-#![feature(panic_info_message, alloc_error_handler, lang_items, naked_functions, asm_const, allocator_api)]
+#![feature(panic_info_message, alloc_error_handler, lang_items, naked_functions, asm_const, allocator_api, sync_unsafe_cell)]
 #![allow(internal_features, non_snake_case)]
 
 #[macro_use]
@@ -11,9 +11,6 @@ extern crate log;
 extern crate console;
 extern crate alloc;
 extern crate rv_plic;
-
-
-
 
 mod lang_item;
 mod heap;
@@ -24,9 +21,11 @@ mod device;
 mod timer;
 mod task;
 mod trampoline;
+mod loader;
+mod cpu;
+mod syscall;
 
 pub use error::*;
-use asyncc::*;
 use mmrv::frame_init;
 
 use core::sync::atomic::{Ordering, AtomicUsize};
@@ -34,11 +33,6 @@ use config::{CPU_NUM, MEMORY_END};
 use mmrv::*;
 
 // use crate::fs::{open_file, OpenFlags};
-
-
-
-
-
 core::arch::global_asm!(include_str!("ramfs.asm"));
 
 /// Boot kernel size allocated in `_start` for single CPU.
@@ -127,6 +121,7 @@ pub fn rust_main_init(hart_id: usize) -> ! {
     mm::kernel_activate();
     BOOT_HART.fetch_add(1, Ordering::Relaxed);
     fs::list_apps();
+    unsafe { cpu::idle() };
     // lkm::init();
     
     // net::init();
