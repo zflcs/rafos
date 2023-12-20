@@ -4,7 +4,8 @@ mod init;
 
 use init::*;
 use flags::*;
-use alloc::{vec::Vec, string::String, collections::BTreeMap};
+use alloc::{vec::Vec, string::String, collections::BTreeMap, sync::Arc};
+use vfs::{OpenFlags, Path};
 use xmas_elf::{
     header,
     program::{self, SegmentData},
@@ -13,10 +14,26 @@ use xmas_elf::{
 use mmrv::*;
 use crate::{
     KernelError, KernelResult,
-    mm::{MM, VMFlags}
+    mm::{MM, VMFlags}, task::Task, fs::open
 };
 use config::*;
 
+
+/// Finds the user ELF in the given directory and creates the task.
+pub fn from_args(dir: String, args: Vec<String>) -> KernelResult<Arc<Task>> {
+    if args.len() < 1 {
+        return Err(KernelError::InvalidArgs);
+    }
+    let name = args[0].as_str();
+    let path = dir.clone() + "/" + name;
+    let file = unsafe {
+        open(Path::from(path), OpenFlags::O_RDONLY)
+            .map_err(|errno| KernelError::Errno(errno))?
+            .read_all()
+    };
+    
+    Ok(Arc::new(Task::new(dir, file.as_slice(), args)?))
+}
 
 /// Create address space from elf.
 pub fn from_elf(elf_data: &[u8], mm: &mut MM, args: Vec<String>) -> KernelResult<VirtAddr> {

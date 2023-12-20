@@ -24,8 +24,6 @@ libs:
 
 apps: $(APPS) libs
 	@cd ../rafos-apps && make build
-	@rm -f $(FS_IMG)
-	@cd ../easy-fs-fuse && cargo run --release -- -s ../rafos-apps/src/bin/ -t ../target/riscv64gc-unknown-linux-gnu/release/ -l ../target/riscv64gc-unknown-linux-gnu/release/
 
 build: apps
 	LOG=DEBUG cargo build --features board_qemu --release

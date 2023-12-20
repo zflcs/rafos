@@ -23,7 +23,7 @@ use kstack::*;
 pub use trapframe::*;
 pub use context::*;
 
-use crate::{cpu::*, trampoline::{user_trap_return, user_trap_handler}, fs::FDManager, write_user, mm::{MM, KERNEL_SPACE, VMFlags}, loader, KernelError, KernelResult};
+use crate::{cpu::*, trampoline::{user_trap_return, user_trap_handler}, fs::FDManager, write_user, mm::{MM, KERNEL_SPACE, VMFlags}, loader, KernelError};
 
 bitflags::bitflags! {
     /// Five-state model:
@@ -66,6 +66,7 @@ pub fn do_fork() -> SyscallResult {
     let curr = cpu().curr.as_ref().unwrap();
     log::trace!("FORK {:?}", &curr);
     let mm = Arc::new(SpinLock::new(curr.mm().fork()?));
+    let fs_info = curr.fs_info.clone();
     log::trace!("{:?}", mm);
     // New kernel stack
     let kstack = KernelStack::new()?;
@@ -95,7 +96,8 @@ pub fn do_fork() -> SyscallResult {
             kstack,
             mm,
             files: Arc::new(SpinLock::new(FDManager::new())),
-        })
+        }),
+        fs_info
     });
     TASK_MANAGER.lock().add(new_task.clone());
     curr.children.lock().push_back(new_task);
@@ -108,6 +110,7 @@ pub fn do_thread_create(entry:usize, arg:usize) -> SyscallResult {
     log::trace!("FORK {:?}", &curr);
     let mm = curr.inner().mm.clone();
     let files = curr.inner().files.clone();
+    let fs_info = curr.fs_info.clone();
     let pid = curr.pid;
     log::trace!("{:?}", mm);
     // New kernel stack
@@ -155,7 +158,8 @@ pub fn do_thread_create(entry:usize, arg:usize) -> SyscallResult {
             kstack,
             mm,
             files,
-        })
+        }),
+        fs_info
     });
     TASK_MANAGER.lock().add(new_task.clone());
     curr.children.lock().push_back(new_task);
@@ -233,9 +237,10 @@ pub fn do_wait_tid(tid: usize) -> SyscallResult {
 }
 
 /// A helper for [`syscall_interface::SyscallProc::execve`]
-pub fn do_exec(elf_data: &[u8], args: Vec<String>) -> SyscallResult {
+pub fn do_exec(dir: String, elf_data: &[u8], args: Vec<String>) -> SyscallResult {
     let curr = cpu().curr.as_ref().unwrap();
     log::trace!("EXEC {:?} ", &curr);
+    log::trace!("EXEC {:?} DIR [{}] {:?}", &curr, &dir, &args);
     let args_len = args.len();
     // memory mappings are not preserved
     let mut mm = MM::new()?;

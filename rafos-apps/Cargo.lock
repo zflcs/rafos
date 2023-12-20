@@ -66,6 +66,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "bit_field"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dc827186963e592360843fb5ba4b973e145841266c1357f7180c43526f2e5b61"
+
+[[package]]
 name = "bitfield"
 version = "0.13.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -109,6 +115,12 @@ dependencies = [
  "embedded-hal",
  "volatile-register",
 ]
+
+[[package]]
+name = "critical-section"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7059fff8937831a9ae6f0fe4d658ffabf58f2ca96aa9dec1c889f936f705f216"
 
 [[package]]
 name = "crossbeam"
@@ -190,6 +202,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d621efb26863f0e9924c6ac577e8275e5e6b77455db64ffa6c65c904e9e132c"
 dependencies = [
  "unicode-segmentation",
+]
+
+[[package]]
+name = "kernel-sync"
+version = "0.1.0"
+source = "git+https://github.com/tkf2019/kernel-sync#5ec6e78ddccea4a5418e34a0150400bec9fbd418"
+dependencies = [
+ "cfg-if",
+ "riscv",
+ "spin",
 ]
 
 [[package]]
@@ -337,6 +359,18 @@ dependencies = [
  "numeric-enum-macro",
  "rafos-errno",
  "rafos-macros",
+ "rafos-vfs",
+]
+
+[[package]]
+name = "rafos-vfs"
+version = "0.1.0"
+dependencies = [
+ "bitflags",
+ "kernel-sync",
+ "numeric-enum-macro",
+ "rafos-errno",
+ "spin",
 ]
 
 [[package]]
@@ -367,6 +401,17 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
+
+[[package]]
+name = "riscv"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa3145d2fae3778b1e31ec2e827b228bdc6abd9b74bb5705ba46dcb82069bc4f"
+dependencies = [
+ "bit_field",
+ "critical-section",
+ "embedded-hal",
+]
 
 [[package]]
 name = "rustc_version"

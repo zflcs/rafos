@@ -1,283 +1,106 @@
-use super::File;
-use crate::fs::ReadHelper;
-use crate::mm::UserBuffer;
-use crate::task::suspend_current_and_run_next;
-use alloc::boxed::Box;
-use alloc::sync::{Arc, Weak};
-use spin::Mutex;
+use alloc::sync::Arc;
+use kernel_sync::SpinLock;
+use vfs::{ring_buf::RingBuffer, File};
 
-#[derive(Clone)]
+use crate::{fs::mem::MemFile, cpu::do_yield};
+use config::MAX_PIPE_BUF;
 pub struct Pipe {
-    readable: bool,
-    writable: bool,
-    buffer: Arc<Mutex<PipeRingBuffer>>,
+    /// If this is a read end of pipe.
+    is_read: bool,
+
+    /// Inner data in a ring buffer.
+    buf: Arc<SpinLock<RingBuffer<MemFile>>>,
 }
 
 impl Pipe {
-    pub fn read_end_with_buffer(buffer: Arc<Mutex<PipeRingBuffer>>) -> Self {
-        Self {
-            readable: true,
-            writable: false,
-            buffer,
-        }
+    /// Creates a read end and a wirte end of a pipe at the smae time.
+    pub fn new() -> (Self, Self) {
+        let buf = Arc::new(SpinLock::new(RingBuffer::new(
+            MAX_PIPE_BUF,
+            MemFile::new(MAX_PIPE_BUF),
+        )));
+        (
+            Self {
+                is_read: true,
+                buf: buf.clone(),
+            },
+            Self {
+                is_read: false,
+                buf,
+            },
+        )
     }
-    pub fn write_end_with_buffer(buffer: Arc<Mutex<PipeRingBuffer>>) -> Self {
-        Self {
-            readable: false,
-            writable: true,
-            buffer,
-        }
-    }
-}
-
-const RING_BUFFER_SIZE: usize = 4096;
-
-#[derive(Copy, Clone, PartialEq)]
-enum RingBufferStatus {
-    FULL,
-    EMPTY,
-    NORMAL,
-}
-
-pub struct PipeRingBuffer {
-    arr: [u8; RING_BUFFER_SIZE],
-    head: usize,
-    tail: usize,
-    status: RingBufferStatus,
-    write_end: Option<Weak<Pipe>>,
-    read_end: Option<Weak<Pipe>>,
-}
-
-impl PipeRingBuffer {
-    pub fn new() -> Self {
-        Self {
-            arr: [0; RING_BUFFER_SIZE],
-            head: 0,
-            tail: 0,
-            status: RingBufferStatus::EMPTY,
-            write_end: None,
-            read_end: None,
-        }
-    }
-    pub fn set_write_end(&mut self, write_end: &Arc<Pipe>) {
-        self.write_end = Some(Arc::downgrade(write_end));
-    }
-
-    pub fn set_read_end(&mut self, read_end: &Arc<Pipe>) {
-        self.read_end = Some(Arc::downgrade(read_end))
-    }
-
-    pub fn write_byte(&mut self, byte: u8) {
-        self.status = RingBufferStatus::NORMAL;
-        self.arr[self.tail] = byte;
-        self.tail = (self.tail + 1) % RING_BUFFER_SIZE;
-        if self.tail == self.head {
-            self.status = RingBufferStatus::FULL;
-        }
-    }
-    pub fn read_byte(&mut self) -> u8 {
-        self.status = RingBufferStatus::NORMAL;
-        let c = self.arr[self.head];
-        self.head = (self.head + 1) % RING_BUFFER_SIZE;
-        if self.head == self.tail {
-            self.status = RingBufferStatus::EMPTY;
-        }
-        c
-    }
-    pub fn available_read(&self) -> usize {
-        if self.status == RingBufferStatus::EMPTY {
-            0
-        } else if self.tail > self.head {
-            self.tail - self.head
-        } else {
-            self.tail + RING_BUFFER_SIZE - self.head
-        }
-    }
-    pub fn available_write(&self) -> usize {
-        if self.status == RingBufferStatus::FULL {
-            0
-        } else {
-            RING_BUFFER_SIZE - self.available_read()
-        }
-    }
-    pub fn all_write_ends_closed(&self) -> bool {
-        self.write_end.as_ref().unwrap().upgrade().is_none()
-    }
-
-    pub fn all_read_ends_closed(&self) -> bool {
-        self.read_end.as_ref().unwrap().upgrade().is_none()
-    }
-}
-
-/// Return (read_end, write_end)
-pub fn make_pipe() -> (Arc<Pipe>, Arc<Pipe>) {
-    let buffer = Arc::new(Mutex::new(PipeRingBuffer::new()));
-    let read_end = Arc::new(Pipe::read_end_with_buffer(buffer.clone()));
-    let write_end = Arc::new(Pipe::write_end_with_buffer(buffer.clone()));
-    buffer.lock().set_write_end(&write_end);
-    buffer.lock().set_read_end(&read_end);
-    (read_end, write_end)
 }
 
 impl File for Pipe {
-    fn read(&self, buf: UserBuffer) -> Result<usize, isize> {
-        assert!(self.readable);
-        let mut buf_iter = buf.into_iter();
-        let mut read_size = 0usize;
-        loop {
-            let mut ring_buffer = self.buffer.lock();
-            let loop_read = ring_buffer.available_read();
-            if loop_read == 0 {
-                if ring_buffer.all_write_ends_closed() {
-                    return Ok(read_size);
-                }
-                drop(ring_buffer);
-                // debug!("[pipe sync read] suspend");
-                suspend_current_and_run_next();
-                continue;
-            }
-            // read at most loop_read bytes
-            for _ in 0..loop_read {
-                if let Some(byte_ref) = buf_iter.next() {
-                    unsafe {
-                        *byte_ref = ring_buffer.read_byte();
-                    }
-                    read_size += 1;
-                } else {
-                    return Ok(read_size);
-                }
-            }
+    fn read(&self, buf: &mut [u8]) -> Option<usize> {
+        if !self.is_read {
+            return None;
+        }
 
-            if buf_iter.is_full() {
-                return Ok(read_size);
-            }
-        }
-    }
-    fn write(&self, buf: UserBuffer) -> Result<usize, isize> {
-        assert!(self.writable);
-        let mut buf_iter = buf.into_iter();
-        let mut write_size = 0usize;
+        let mut read_len = 0;
         loop {
-            let mut ring_buffer = self.buffer.lock();
-            let loop_write = ring_buffer.available_write();
-            if loop_write == 0 {
-                debug!("iter ++");
-                if ring_buffer.all_read_ends_closed() {
-                    debug!("pipe readFD closed");
-                    return Ok(write_size);
+            let buf_rc = Arc::strong_count(&self.buf);
+            let mut ring_buf = self.buf.lock();
+            if ring_buf.is_empty() {
+                // Write end closed.
+                if buf_rc == 1 {
+                    return Some(0);
                 }
-                drop(ring_buffer);
-                suspend_current_and_run_next();
+                // Release the lock.
+                drop(ring_buf);
+                unsafe { do_yield() };
                 continue;
             }
-            // write at most loop_write bytes
-            for _ in 0..loop_write {
-                if let Some(byte_ref) = buf_iter.next() {
-                    ring_buffer.write_byte(unsafe { *byte_ref });
-                    write_size += 1;
-                } else {
-                    return Ok(write_size);
-                }
-            }
+            read_len += ring_buf.read(&mut buf[read_len..]);
+            break;
         }
+        Some(read_len)
     }
-    fn awrite(&self, buf: UserBuffer, pid: usize, key: usize) -> Result<usize, isize> {
-        let work = Box::pin(awrite_work(self.clone(), buf, pid, key));
-        lib_so::spawn(move || work, 0, 0, lib_so::CoroutineKind::KernSyscall);
-        Ok(0)
-    }
-    fn aread(&self, buf: UserBuffer, cid: usize, pid: usize, key: usize) -> Result<usize, isize> {
-        let work = Box::pin(aread_work(self.clone(), buf, cid, pid, key));
-        lib_so::spawn(move || work, 0, 0, lib_so::CoroutineKind::KernSyscall);
-        Ok(0)
+
+    fn write(&self, buf: &[u8]) -> Option<usize> {
+        if self.is_read {
+            return None;
+        }
+
+        let mut write_len = 0;
+        loop {
+            let buf_rc = Arc::strong_count(&self.buf);
+            let mut ring_buf = self.buf.lock();
+            if ring_buf.is_full() {
+                // Read end closed.
+                if buf_rc == 1 {
+                    // TODO: raise SIGPIPE and fail with EPIPE
+                    return Some(0);
+                }
+                // Release the lock.
+                drop(ring_buf);
+                unsafe { do_yield() };
+                continue;
+            }
+            write_len += ring_buf.write(&buf[write_len..]);
+            break;
+        }
+        Some(write_len)
     }
 
     fn readable(&self) -> bool {
-        self.readable
+        self.is_read
     }
 
     fn writable(&self) -> bool {
-        self.writable
+        !self.is_read
     }
-}
 
-async fn awrite_work(s: Pipe, buf: UserBuffer, pid: usize, key: usize) {
-    assert!(s.writable);
-    let mut buf_iter = buf.into_iter();
-    let mut helper = Box::new(ReadHelper::new());
-    loop {
-        let mut ring_buffer = s.buffer.lock();
-        let loop_write = ring_buffer.available_write();
-        if loop_write == 0 {
-            debug!("iter ++");
-            if ring_buffer.all_read_ends_closed() {
-                debug!("pipe readFD closed");
-                break;
-            }
-            drop(ring_buffer);
-            helper.as_mut().await;
-            continue;
-        }
-        // write at most loop_write bytes
-        for _ in 0..loop_write {
-            if let Some(byte_ref) = buf_iter.next() {
-                ring_buffer.write_byte(unsafe { *byte_ref });
-            } else {
-                break;
-            }
-        }
-        if buf_iter.is_full() {
-            debug!("write complete!");
-            break;
-        }
+    fn read_ready(&self) -> bool {
+        self.is_read && !self.buf.lock().is_empty()
     }
-    let async_key = crate::syscall::AsyncKey { pid, key };
-    // 向文件中写完数据之后，需要唤醒内核当中的协程，将管道中的数据写到缓冲区中
-    if let Some(kernel_cid) = crate::syscall::WRMAP.lock().remove(&async_key) {
-        // info!("kernel_cid {}", kernel_cid);
-        lib_so::re_back(kernel_cid, 0);
-    }
-    debug!("pipe write end");
-}
 
-async fn aread_work(s: Pipe, buf: UserBuffer, _cid: usize, pid: usize, key: usize) {
-    let mut buf_iter = buf.into_iter();
-    // let mut read_size = 0usize;
-    let mut helper = Box::new(ReadHelper::new());
-    loop {
-        let mut ring_buffer = s.buffer.lock();
-        let loop_read = ring_buffer.available_read();
-        if loop_read == 0 {
-            debug!("read_size is 0");
-            if ring_buffer.all_write_ends_closed() {
-                break;
-                //return read_size;
-            }
-            drop(ring_buffer);
-            crate::syscall::WRMAP.lock().insert(
-                crate::syscall::AsyncKey { pid, key },
-                lib_so::current_cid(true),
-            );
-            helper.as_mut().await;
-            continue;
-        }
-        debug!("read_size is {}", loop_read);
-        // read at most loop_read bytes
-        for _ in 0..loop_read {
-            if let Some(byte_ref) = buf_iter.next() {
-                unsafe {
-                    *byte_ref = ring_buffer.read_byte();
-                }
-            } else {
-                break;
-            }
-        }
-        if buf_iter.is_full() {
-            debug!("read complete!");
-            break;
-        }
+    fn write_ready(&self) -> bool {
+        !self.is_read && !self.buf.lock().is_full()
     }
-    // 将读协程加入到回调队列中，使得用户态的协程执行器能够唤醒读协程
-    debug!("read pid is {}", pid);
-    debug!("key is {}", key);
+
+    fn get_off(&self) -> usize {
+        0
+    }
 }

@@ -1,13 +1,12 @@
 use alloc::{
     collections::{vec_deque, VecDeque},
-    sync::Arc, vec, string::ToString,
+    sync::Arc, vec, string::{ToString, String},
 };
-use config::CPU_NUM;
+use config::{CPU_NUM, ROOT_DIR, INIT_TASK_PATH};
 use console::hart_id;
 use kernel_sync::{CPUs, SpinLock};
 use spin::Lazy;
-
-use crate::{task::*, fs::{open_file, OpenFlags}};
+use crate::{task::*, loader::from_args};
 
 
 /// Possible interfaces for task schedulers.
@@ -80,11 +79,13 @@ impl CPUContext {
 /// Global task manager shared by CPUs.
 pub static TASK_MANAGER: Lazy<SpinLock<QueueScheduler>> =
     Lazy::new(|| {
-        let inode = open_file("shell", OpenFlags::RDONLY).unwrap();
-        let elf_data = inode.read_all();
-        let task = Arc::new(Task::new(&elf_data, vec!["shell".to_string()]).unwrap());
         let mut scheduler = QueueScheduler::new();
-        scheduler.add(task);
+        if let Some(task) = from_args(String::from(ROOT_DIR), vec![INIT_TASK_PATH.to_string()])
+            .map_err(|_| log::warn!("INIT TASK NOT FOUND"))
+            .ok()
+        {
+            scheduler.add(task);
+        }
         SpinLock::new(scheduler)
     });
 

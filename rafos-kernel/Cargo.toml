@@ -16,6 +16,7 @@ rv-plic = { git = "https://github.com/duskmoon314/rv-plic" }
 sbi-rt = { version = "0.0.2", features = ["legacy"] }
 virtio-drivers = { git = "https://github.com/rcore-os/virtio-drivers", rev = "4ee80e5", optional = true }
 numeric-enum-macro = "0.2.0"
+fatfs = { path = "../rafos-crates/rust-fatfs", version = "0.4", default-features = false, features = ["alloc", "lfn", "log_level_info"] }
 
 console = { path = "../rafos-crates/rafos-console", package = "rafos-console" }
 config = { path = "../rafos-crates/rafos-config", package = "rafos-config", features = ["board_qemu"] }
@@ -23,12 +24,13 @@ errno = { path = "../rafos-crates/rafos-errno", package = "rafos-errno" }
 # executor = { path = "../rafos-crates/rafos-executor", package = "rafos-executor" }
 time = { path = "../rafos-crates/rafos-time", package = "rafos-time" }
 asyncc = { path = "../asyncc" }
-easy-fs = { path = "../rafos-crates/easy-fs" }
 mmrv = { path = "../rafos-crates/rafos-mmrv", package = "rafos-mmrv" }
 ubuf = { path = "../rafos-crates/rafos-ubuf", package = "rafos-ubuf" }
 id-alloc = { path = "../rafos-crates/rafos-id-alloc", package = "rafos-id-alloc" }
 kernel-sync = {  git = "https://github.com/tkf2019/kernel-sync" }
 syscall = { path = "../rafos-crates/rafos-syscall", package = "rafos-syscall" }
+vfs = { path = "../rafos-crates/rafos-vfs", package = "rafos-vfs" }
+device-cache = { path = "../rafos-crates/device-cache" }
 
 
 [dependencies.smoltcp]
@@ -46,3 +48,7 @@ features = [
 
 board_qemu = ["virtio-drivers"]
 default = ["board_qemu"]
+
+[build-dependencies]
+fatfs = { path = "../rafos-crates/rust-fatfs", version = "0.4" }
+fscommon = { version = "0.1.1", features = ["std"] }

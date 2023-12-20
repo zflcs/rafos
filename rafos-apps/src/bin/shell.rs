@@ -68,7 +68,7 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
                     if pid == 0 {
                         // input redirection
                         if !input.is_empty() {
-                            let input_fd = open(input.as_str(), OpenFlags::RDONLY);
+                            let input_fd = open(input.as_str(), OpenFlags::O_RDONLY);
                             if input_fd == -1 {
                                 println!("Error when opening file {}", input);
                                 return -4;
@@ -81,7 +81,7 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
                         // output redirection
                         if !output.is_empty() {
                             let output_fd =
-                                open(output.as_str(), OpenFlags::CREATE | OpenFlags::WRONLY);
+                                open(output.as_str(), OpenFlags::O_CREAT | OpenFlags::O_WRONLY);
                             if output_fd == -1 {
                                 println!("Error when opening file {}", output);
                                 return -4;

@@ -4,7 +4,7 @@ use super::*;
 
 use kernel_sync::{SpinLock, SpinLockGuard};
 use alloc::{sync::{Arc, Weak}, string::{String, ToString}};
-use crate::{mm::{MM, KERNEL_SPACE}, fs::FDManager, KernelResult, loader, trampoline::*};
+use crate::{mm::{MM, KERNEL_SPACE}, fs::{FDManager, FSInfo}, KernelResult, loader, trampoline::*};
 
 pub struct TaskInner {
     pub exit_code: i32,
@@ -27,6 +27,7 @@ pub struct Task {
     pub parent: SpinLock<Option<Weak<Task>>>,
     pub children: SpinLock<LinkedList<Arc<Task>>>,
     pub inner: SyncUnsafeCell<TaskInner>,
+    pub fs_info: Arc<SpinLock<FSInfo>>,
 }
 
 impl Task {
@@ -46,10 +47,15 @@ impl Task {
                 mm: Arc::new(SpinLock::new(MM::new()?)),
                 files: Arc::new(SpinLock::new(FDManager::new())),
             }),
+            fs_info: Arc::new(SpinLock::new(FSInfo {
+                umask: 0,
+                cwd: String::from("/"),
+                root: String::from("/"),
+            })),
         })
     }
 
-    pub fn new(elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
+    pub fn new(dir: String, elf_data: &[u8], args: Vec<String>) -> KernelResult<Self> {
         let mut mm = MM::new()?;
         let args_len = args.len();
         let vsp = loader::from_elf(elf_data, &mut mm, args)?;
@@ -85,6 +91,11 @@ impl Task {
                 mm: Arc::new(SpinLock::new(mm)),
                 files: Arc::new(SpinLock::new(FDManager::new())),
             }),
+            fs_info: Arc::new(SpinLock::new(FSInfo {
+                umask: 0,
+                cwd: dir,
+                root: String::from("/"),
+            })),
         };
         Ok(task)
     }

@@ -1,18 +1,8 @@
-use bitflags::bitflags;
+pub use vfs::OpenFlags;
 use crate::*;
 
 pub fn dup(fd: usize) -> isize {
     sys_dup(fd)
-}
-
-bitflags! {
-    pub struct OpenFlags: u32 {
-        const RDONLY = 0;
-        const WRONLY = 1 << 0;
-        const RDWR = 1 << 1;
-        const CREATE = 1 << 9;
-        const TRUNC = 1 << 10;
-    }
 }
 
 pub fn open(path: &str, flags: OpenFlags) -> isize {

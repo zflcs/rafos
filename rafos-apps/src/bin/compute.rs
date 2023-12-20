@@ -3,8 +3,6 @@
 #![feature(lang_items)]
 #![allow(internal_features)]
 
-use alloc::string::ToString;
-use syscall::fork;
 
 static TESTS: &[&str] = &[
     "forktest\0",

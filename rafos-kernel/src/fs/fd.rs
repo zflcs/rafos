@@ -1,10 +1,10 @@
 use alloc::{fmt, sync::Arc, vec::Vec};
+use vfs::{File, OpenFlags};
 
-use crate::error::{KernelError, KernelResult};
+use crate::{KernelError, KernelResult};
 use config::DEFAULT_FD_LIMIT;
 
-
-use super::{Stderr, Stdin, Stdout, File};
+use super::{Stderr, Stdin, Stdout};
 
 /// File descriptor manager.
 #[derive(Clone)]
@@ -105,7 +105,20 @@ impl FDManager {
         self.count() >= self.limit
     }
 
-    
+    /// Close files when sys_exec called
+    pub fn cloexec(&mut self) {
+        for file in &mut self.list {
+            if file.is_some()
+                && file
+                    .as_ref()
+                    .unwrap()
+                    .open_flags()
+                    .contains(OpenFlags::O_CLOEXEC)
+            {
+                file.take();
+            }
+        }
+    }
 }
 
 impl fmt::Debug for FDManager {

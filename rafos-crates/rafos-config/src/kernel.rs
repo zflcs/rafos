@@ -64,6 +64,21 @@ pub const ASYNCC_LEN: usize = 0x10000;
 /// The Executor base address
 pub const EXECUTOR_BASE_ADDR: usize = 0x8600_0000;
 
+/// Maximum size of  pipe buffer.
+pub const MAX_PIPE_BUF: usize = PAGE_SIZE;
+
+/// The number of block cache units for virtio.
+pub const CACHE_SIZE: usize = 32;
+
+/// Size of virtual block device: 40 MB
+pub const FS_IMG_SIZE: usize = 40 * 1024 * 1024;
+
+/// Boot root directory
+pub const ROOT_DIR: &str = "/";
+
+/// Absolute path of init task
+pub const INIT_TASK_PATH: &str = "shell";
+
 /// MMIO
 #[cfg(feature = "board_qemu")]
 pub const MMIO: &[(usize, usize)] = &[

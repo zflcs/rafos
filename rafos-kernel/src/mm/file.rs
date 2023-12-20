@@ -1,5 +1,5 @@
 use alloc::sync::Arc;
-use crate::fs::File;
+use vfs::File;
 
 use super::MmapProt;
 
@@ -20,13 +20,13 @@ impl MmapFile {
     }
 
     /// Reads at `off` starting from `self.offset`.
-    pub fn read(&self, off: usize, buf: &mut [u8]) -> Option<usize> {
+    pub fn read(&self, _off: usize, _buf: &mut [u8]) -> Option<usize> {
         // self.file.read_at_off(off + self.offset, buf)
         todo!()
     }
 
     /// Writes at `off` starting from `self.offset`.
-    pub fn write(&self, off: usize, buf: &[u8]) -> Option<usize> {
+    pub fn write(&self, _off: usize, _buf: &[u8]) -> Option<usize> {
         // self.file.write_at_off(off + self.offset, buf)
         todo!()
     }

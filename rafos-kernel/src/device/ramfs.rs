@@ -2,7 +2,7 @@ use core::slice;
 
 use alloc::sync::Arc;
 use spin::Lazy;
-use easy_fs::BlockDevice;
+use device_cache::BlockDevice;
 
 
 
@@ -34,9 +34,5 @@ impl BlockDevice for RamFS {
         let target_ptr = start_ptr + block_id * BLOCK_SZ;
         let target_slice = unsafe { slice::from_raw_parts_mut(target_ptr as *mut u8, BLOCK_SZ) };
         target_slice.copy_from_slice(&buf)
-    }
-
-    fn handle_irq(&self) {
-        unimplemented!();
     }
 }

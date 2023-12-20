@@ -140,7 +140,7 @@ pub fn rust_main_init(hart_id: usize) -> ! {
             }
         }
     }
-    fs::list_apps();
+    // fs::list_apps();
     rust_main(hart_id)
 }
 

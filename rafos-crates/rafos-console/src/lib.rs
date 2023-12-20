@@ -28,7 +28,14 @@ pub fn set_log_level(env: Option<&str>) {
 #[doc(hidden)]
 #[inline]
 pub fn _print(args: Arguments) {
-    CONSOLE.lock().write_fmt(args).unwrap();
+    STDOUT.lock().write_fmt(args).unwrap();
+}
+
+/// _eprint
+#[doc(hidden)]
+#[inline]
+pub fn _eprint(args: Arguments) {
+    STDERR.lock().write_fmt(args).unwrap();
 }
 
 
@@ -49,8 +56,26 @@ macro_rules! println {
     }
 }
 
+/// eprint!
+#[macro_export]
+macro_rules! eprint {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::_eprint(format_args!(concat!("\x1b[31m", $fmt, "\x1b[0m") $(, $($arg)+)?))
+    }
+}
+
+/// println!
+#[macro_export]
+macro_rules! eprintln {
+    ($fmt: literal $(, $($arg: tt)+)?) => {
+        $crate::_eprint(format_args!(concat!("\x1b[31m", $fmt, "\x1b[0m\n") $(, $($arg)+)?))
+    }
+}
+
 ///
-static CONSOLE: Lazy<Mutex<Console>> = Lazy::new(|| Mutex::new(Console));
+static STDOUT: Lazy<Mutex<Console>> = Lazy::new(|| Mutex::new(Console));
+///
+static STDERR: Lazy<Mutex<Console>> = Lazy::new(|| Mutex::new(Console));
 
 /// 
 pub(crate) struct Console;
