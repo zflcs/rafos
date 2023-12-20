@@ -1,6 +1,6 @@
 use errno::Errno;
 use syscall::{SyscallResult, SyscallTrait};
-use crate::{cpu::*, task::{do_fork, do_wait, do_exec}, fs::{open_file, OpenFlags}};
+use crate::{cpu::*, task::{do_fork, do_wait, do_exec, do_thread_create, do_wait_tid}, fs::{open_file, OpenFlags}};
 use mmrv::*;
 
 use super::SyscallImpl;
@@ -52,5 +52,12 @@ impl SyscallTrait for SyscallImpl {
             Ok(0)
         }
     }
+
+    fn sys_thread_create(entry:usize, arg:usize) -> SyscallResult {
+        do_thread_create(entry, arg)
+    }
     
+    fn sys_wait_tid(tid:usize) -> SyscallResult {
+        do_wait_tid(tid)
+    }
 }

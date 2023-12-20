@@ -80,7 +80,6 @@ pub fn user_trap_handler() -> ! {
         }
         _ => {
             let curr = cpu().curr.as_ref().unwrap();
-            log::debug!("{:?} {:?}", curr, scause.cause());
             show_trapframe(curr.trapframe());
             trap_info();
             // unsafe { do_exit(-1) };
