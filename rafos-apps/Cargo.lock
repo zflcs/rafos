@@ -359,7 +359,15 @@ dependencies = [
  "numeric-enum-macro",
  "rafos-errno",
  "rafos-macros",
+ "rafos-time",
  "rafos-vfs",
+]
+
+[[package]]
+name = "rafos-time"
+version = "0.1.0"
+dependencies = [
+ "numeric-enum-macro",
 ]
 
 [[package]]

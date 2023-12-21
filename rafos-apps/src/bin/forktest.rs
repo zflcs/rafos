@@ -6,7 +6,7 @@
 const MAX_CHILD: usize = 40;
 
 #[macros::entry]
-pub fn main(argc: usize, argv: &[&str]) -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> isize {
     for i in 0..MAX_CHILD {
         let pid = fork();
         if pid == 0 {
@@ -17,7 +17,7 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
         }
         assert!(pid > 0);
     }
-    let mut exit_code: i32 = 0;
+    let mut exit_code: isize = 0;
     for _ in 0..MAX_CHILD {
         if wait(&mut exit_code) <= 0 {
             panic!("wait stopped early");

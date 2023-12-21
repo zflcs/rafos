@@ -12,6 +12,33 @@ use regex::Regex;
 use syn::{parse_macro_input, DeriveInput, Ident, ItemFn};
 use syscall::Arguments;
 
+#[proc_macro]
+pub fn syscall(item: TokenStream) -> TokenStream {
+    let input = item.to_string();
+    let args: Vec<&str> = input.split(", ")
+        .collect();
+    let args_ident: Vec<syn::Ident> = args.iter()
+        .map(|s| syn::Ident::new(s, Span::call_site()))
+        .collect();
+    let len = args.len();
+    let mut derive = TokenStream::default();
+    let syscall_fn = quote::format_ident!("syscall{}", len - 1);
+    derive = quote!(
+        #[inline]
+        pub unsafe fn #syscall_fn(#(#args_ident: usize), *) -> isize {
+            let ret: isize;
+            core::arch::asm!(
+                "ecall",
+                #(in(#args) #args_ident), *,
+                lateout("a0") ret,
+                options(nostack)
+            );
+            ret
+        }
+    ).into();
+    derive
+}
+
 #[proc_macro_attribute]
 pub fn entry(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let input_fn = parse_macro_input!(item as ItemFn);
@@ -52,7 +79,7 @@ pub fn entry(_attr: TokenStream, item: TokenStream) -> TokenStream {
                     .unwrap(),
                 );
             }
-            sys_exit(main(argc, v.as_slice()) as usize);
+            sys_exit(main(argc, v.as_slice()));
             panic!()
         }
 
@@ -62,14 +89,14 @@ pub fn entry(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[no_mangle]
         pub extern "C" fn put_str(ptr: *const u8, len: usize) {
-            sys_write(1, ptr as _, len);
+            sys_write(1, ptr, len);
         }
 
         pub fn getchar() -> u8 {
             let mut c = [0u8; 1];
             let mut res = -1;
             while res < 0 {
-                res = sys_read(0, c.as_ptr() as usize, c.len());
+                res = sys_read(0, c.as_mut_ptr(), c.len());
             }
             c[0]
         }
@@ -111,7 +138,7 @@ pub fn entry(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #[panic_handler]
         fn panic(info: &core::panic::PanicInfo) -> ! {
             println!("{}", info);
-            sys_exit(usize::MAX);
+            sys_exit(-1);
             panic!("")
         }
     ).into();
@@ -157,7 +184,7 @@ pub fn get_libfn(item: TokenStream) -> TokenStream {
 
 /// user syscall interface
 #[proc_macro_derive(GenSysMacro, attributes(arguments))]
-pub fn syscall_macro_derive(input: TokenStream) -> TokenStream {
+pub fn syscall_derive(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
     let DeriveInput { ident, .. } = input;
     let mut comment_arms = Vec::new();
@@ -171,28 +198,65 @@ pub fn syscall_macro_derive(input: TokenStream) -> TokenStream {
             // println!("{}", fn_name_str);
             let ident_name = syn::Ident::new(fn_name_str.as_str(), Span::call_site());
             if let Ok(args) = Arguments::from_attributes(&variant.attrs) {
-                let args_vec: Vec<syn::Ident> = args
-                    .args
-                    .unwrap()
-                    .value()
-                    .split(", ")
-                    .map(|s| syn::Ident::new(s, Span::call_site()))
-                    .collect();
-                let len = args_vec.len();
-                let syscall_fn = quote::format_ident!("syscall{}", len);
-                let mut doc = String::from("arguments are: ");
-                for idx in 0..(len - 1) {
-                    doc.push_str(&args_vec[idx].to_string().as_str());
-                    doc.push_str(": usize, ");
+                let mut arg_vec = Vec::new();
+                let mut arg_idents = Vec::new();
+                if args.a0.is_some() {
+                    let fn_arg = args.a0.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
                 }
-                doc.push_str(&args_vec[len - 1].to_string().as_str());
-                doc.push_str(": usize");
+                if args.a1.is_some() {
+                    let fn_arg = args.a1.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                if args.a2.is_some() {
+                    let fn_arg = args.a2.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                if args.a3.is_some() {
+                    let fn_arg = args.a3.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                if args.a4.is_some() {
+                    let fn_arg = args.a4.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                if args.a5.is_some() {
+                    let fn_arg = args.a5.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                if args.a6.is_some() {
+                    let fn_arg = args.a6.unwrap();
+                    let str = fn_arg.to_token_stream().to_string();
+                    let ident = str.split(" : ").collect::<Vec<&str>>()[0];
+                    arg_idents.push(syn::Ident::new(ident, Span::call_site()));
+                    arg_vec.push(fn_arg);
+                }
+                let len = arg_idents.len();
+                let syscall_fn = quote::format_ident!("syscall{}", len);
+
                 comment_arms.push(quote! (
-                    #[doc = #doc]
                     #[inline]
-                    pub fn #ident_name(#(#args_vec: usize), *) -> isize {
+                    pub fn #ident_name(#(#arg_vec),*) -> isize {
                         unsafe {
-                            #syscall_fn(#ident::#ident_item as usize, #(#args_vec),*)
+                            crate::#syscall_fn(#ident::#ident_item as usize, #(#arg_idents as usize),*)
                         }
                     }
                 ));
@@ -201,59 +265,16 @@ pub fn syscall_macro_derive(input: TokenStream) -> TokenStream {
                     #[inline]
                     pub fn #ident_name() -> isize {
                         unsafe {
-                            syscall0(#ident::#ident_item as usize)
+                            crate::syscall0(#ident::#ident_item as usize)
                         }
                     }
                 ));
             }
         }
     }
+    // println!("{:?}", comment_arms[0].to_string());
     quote!(
         #(#comment_arms)*
-        macro_rules! syscall {
-            ($($name:ident($a:ident, $($b:ident, $($c:ident, $($d:ident, $($e:ident, $($f:ident, $($g:ident)?)?)?)?)?)?);)+) => {
-                $(
-                    #[inline]
-                    pub unsafe fn $name($a: usize, $($b: usize, $($c: usize, $($d: usize, $($e: usize, $($f: usize, $($g: usize)?)?)?)?)?)?) -> isize {
-                        let ret: isize;
-                        core::arch::asm!(
-                            "ecall",
-                            in("a7") $a,
-                            $(
-                                in("a0") $b,
-                                $(
-                                    in("a1") $c,
-                                    $(
-                                        in("a2") $d,
-                                        $(
-                                            in("a3") $e,
-                                            $(
-                                                in("a4") $f,
-                                                $(
-                                                    in("a5") $g,
-                                                )?
-                                            )?
-                                        )?
-                                    )?
-                                )?
-                            )?
-                            lateout("a0") ret,
-                            options(nostack),
-                        );
-                        ret
-                    }
-                )+
-            };
-        }
-        syscall! {
-            syscall0(a,);
-            syscall1(a, b,);
-            syscall2(a, b, c,);
-            syscall3(a, b, c, d,);
-            syscall4(a, b, c, d, e,);
-            syscall5(a, b, c, d, e, f,);
-            syscall6(a, b, c, d, e, f, g);
-        }
     ).into()
 }
 
@@ -261,6 +282,8 @@ pub fn syscall_macro_derive(input: TokenStream) -> TokenStream {
 #[proc_macro_derive(GenSysTrait, attributes(arguments))]
 pub fn syscall_trait_derive(input: TokenStream) -> TokenStream {
     let input: DeriveInput = parse_macro_input!(input);
+    let ident = input.ident;
+    
     let mut trait_fns = Vec::new();
     if let syn::Data::Enum(syn::DataEnum { variants, .. }) = input.data {
         for variant in variants {
@@ -272,16 +295,38 @@ pub fn syscall_trait_derive(input: TokenStream) -> TokenStream {
             // println!("{}", fn_name_str);
             let ident_name = syn::Ident::new(fn_name_str.as_str(), Span::call_site());
             if let Ok(args) = Arguments::from_attributes(&variant.attrs) {
-                let args_vec: Vec<syn::Ident> = args
-                    .args
-                    .unwrap()
-                    .value()
-                    .split(", ")
-                    .map(|s| syn::Ident::new(s, Span::call_site()))
-                    .collect();
+                let mut arg_vec = Vec::new();
+                if args.a0.is_some() {
+                    let fn_arg = args.a0.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a1.is_some() {
+                    let fn_arg = args.a1.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a2.is_some() {
+                    let fn_arg = args.a2.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a3.is_some() {
+                    let fn_arg = args.a3.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a4.is_some() {
+                    let fn_arg = args.a4.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a5.is_some() {
+                    let fn_arg = args.a5.unwrap();
+                    arg_vec.push(fn_arg);
+                }
+                if args.a6.is_some() {
+                    let fn_arg = args.a6.unwrap();
+                    arg_vec.push(fn_arg);
+                }
                 trait_fns.push(quote!(
                     #[inline]
-                    fn #ident_name(#(#args_vec: usize),*) -> SyscallResult {
+                    fn #ident_name(#(#arg_vec),*) -> SyscallResult {
                         unimplemented!()
                     }
                 ));
@@ -295,8 +340,11 @@ pub fn syscall_trait_derive(input: TokenStream) -> TokenStream {
             }
         }
     }
+    let syscall_trait = quote::format_ident!("{}Trait", ident);
+    // println!("{}", syscall_trait);
     quote!(
-        pub trait SyscallTrait: Sync {
+        use crate::SyscallResult;
+        pub trait #syscall_trait: Sync {
             #(#trait_fns)*
         }
     )

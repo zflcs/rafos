@@ -4,7 +4,7 @@
 #![allow(internal_features)]
 
 #[macros::entry]
-pub fn main(argc: usize, argv: &[&str]) -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> isize {
     let mut v = Vec::new();
     let args = [
         Argument { ch: 'a', rc: 1 },
@@ -14,7 +14,7 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
     for arg in args.iter() {
         v.push(thread_create(
             thread_print as usize,
-            arg as *const _ as usize,
+            arg as *const _ as _,
         ));
     }
     for tid in v.iter() {
@@ -29,7 +29,7 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
 
 struct Argument {
     pub ch: char,
-    pub rc: i32,
+    pub rc: isize,
 }
 
 fn thread_print(arg: *const Argument) -> ! {

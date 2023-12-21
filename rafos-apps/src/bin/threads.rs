@@ -7,11 +7,11 @@ use alloc::vec;
 
 
 #[macros::entry]
-pub fn main(argc: usize, argv: &[&str]) -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> isize {
     let v = vec![
-        thread_create(thread_a as usize, 0),
-        thread_create(thread_b as usize, 0),
-        thread_create(thread_c as usize, 0),
+        thread_create(thread_a as usize, core::ptr::null()),
+        thread_create(thread_b as usize, core::ptr::null()),
+        thread_create(thread_c as usize, core::ptr::null()),
     ];
     for tid in v.iter() {
         let exit_code = waittid(*tid as usize);

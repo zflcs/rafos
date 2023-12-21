@@ -7,7 +7,7 @@ use alloc::{sync::{Arc, Weak}, string::{String, ToString}};
 use crate::{mm::{MM, KERNEL_SPACE}, fs::{FDManager, FSInfo}, KernelResult, loader, trampoline::*};
 
 pub struct TaskInner {
-    pub exit_code: i32,
+    pub exit_code: isize,
     pub context: TaskContext,
     pub kstack: KernelStack,
     pub mm: Arc<SpinLock<MM>>,

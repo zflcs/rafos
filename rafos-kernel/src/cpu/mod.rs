@@ -170,7 +170,7 @@ pub unsafe fn idle() -> ! {
 /// # Safety
 ///
 /// Unsafe context switch will be called in this function.
-pub unsafe fn do_exit(exit_code: i32) {
+pub unsafe fn do_exit(exit_code: isize) {
     let curr = cpu().curr.as_ref().unwrap();
     let _curr_ctx = {
         curr.inner().exit_code = exit_code;

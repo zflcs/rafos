@@ -15,7 +15,7 @@ use alloc::string::String;
 
 
 #[macros::entry]
-pub fn main(argc: usize, argv: &[&str]) -> i32 {
+pub fn main(argc: usize, argv: &[&str]) -> isize {
     println!("Rust user shell");
     let mut line: String = String::new();
     print!(">> ");
@@ -92,13 +92,13 @@ pub fn main(argc: usize, argv: &[&str]) -> i32 {
                             close(output_fd);
                         }
                         // child process
-                        if exec(args_copy[0].as_str(), args_addr.as_slice()) == -1 {
+                        if exec(args_copy[0].as_str(), args_addr.as_slice(), &[core::ptr::null::<u8>()]) == -1 {
                             println!("Error when executing!");
                             return -4;
                         }
                         unreachable!();
                     } else {
-                        let mut exit_code: i32 = 0;
+                        let mut exit_code: isize = 0;
                         // log::debug!("exit_code_ptr {:#X}", &mut exit_code as *mut i32 as usize);
                         let exit_pid = waitpid(pid as usize, &mut exit_code);
                         // println!("user here {}", exit_code);
