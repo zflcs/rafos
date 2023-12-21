@@ -1,3 +1,4 @@
+use alloc::boxed::Box;
 pub use vfs::OpenFlags;
 use crate::*;
 
@@ -63,13 +64,13 @@ pub fn waittid(tid: usize) -> isize {
 
 pub fn sleep(period_ms: usize) {
     // sys_nano_sleep(rqtp, rmtp)
-
 }
 
-
-
-
-pub fn thread_create(entry: usize, arg: *const usize) -> isize {
-    sys_thread_create(entry, arg)
+const STACK_SIZE: usize = 2 * 1024;
+pub fn thread_create(entry: usize, args: *const usize) -> isize {
+    let stack = Box::new([0u8; STACK_SIZE]);
+    let stack_base = Box::leak(stack) as *const u8 as usize;
+    let ustack = stack_base + STACK_SIZE;
+    let flags = CloneFlags::CLONE_VM | CloneFlags::CLONE_FS | CloneFlags::CLONE_FILES | CloneFlags::CLONE_THREAD | CloneFlags::CLONE_SIGHAND;
+    sys_clone(entry, ustack as usize, flags.bits(), args, 0, 0, 0)
 }
-

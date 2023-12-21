@@ -10,7 +10,7 @@ mod timer;
 use syscall::*;
 
 #[derive(Debug)]
-pub struct SyscallArgs(pub SyscallId, pub [usize; 6]);
+pub struct SyscallArgs(pub SyscallId, pub [usize; 7]);
 
 pub struct SyscallImpl;
 
@@ -64,7 +64,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
             SyscallProc::SchedYield => todo!(),
             SyscallProc::Pause => todo!(),
             SyscallProc::GetPid => todo!(),
-            SyscallProc::Clone => todo!(),
+            SyscallProc::Clone => SyscallImpl::sys_clone(args[0], args[1], args[2], args[3] as _, args[4], args[5], args[6]),
             SyscallProc::Fork => SyscallImpl::sys_fork(),
             SyscallProc::Vfork => todo!(),
             SyscallProc::Execve => SyscallImpl::sys_execve(args[0] as _, args[1] as _, args[2] as _),

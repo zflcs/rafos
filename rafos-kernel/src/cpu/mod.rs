@@ -165,23 +165,6 @@ pub unsafe fn idle() -> ! {
     }
 }
 
-/// Current task exits. Run next task.
-///
-/// # Safety
-///
-/// Unsafe context switch will be called in this function.
-pub unsafe fn do_exit(exit_code: isize) {
-    let curr = cpu().curr.as_ref().unwrap();
-    let _curr_ctx = {
-        curr.inner().exit_code = exit_code;
-        *curr.state.lock() = TaskState::ZOMBIE;
-        &curr.inner().context as *const TaskContext
-    };
-    log::trace!("{:?} exited with code {}", curr, exit_code);
-
-    __move_to_next(idle_ctx());
-}
-
 /// Current task suspends. Run next task.
 ///
 /// # Safety

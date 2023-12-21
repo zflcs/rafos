@@ -1,6 +1,6 @@
 
 use super::SyscallImpl;
-use crate::{cpu::{do_exit, cpu}, task::{do_wait_tid, do_wait, do_exec, do_fork, do_thread_create}, fs::open, read_user};
+use crate::{cpu::cpu, task::{do_wait_tid, do_wait, do_exec, do_fork, do_thread_create, do_exit, do_clone}, fs::open, read_user};
 use alloc::{vec::Vec, string::String};
 use errno::Errno;
 use mmrv::VirtAddr;
@@ -12,6 +12,22 @@ impl SyscallProcTrait for SyscallImpl {
     fn sys_exit(exit_code: isize) -> SyscallResult {
         unsafe { do_exit(exit_code); }
         unreachable!()
+    }
+
+    fn sys_clone(entry:usize, stack:usize, flags:usize, arg: *const usize, ptid:usize, tls:usize, ctid:usize) -> SyscallResult {
+        let clone_flags = CloneFlags::from_bits(flags);
+        if clone_flags.is_none() {
+            return Err(Errno::EINVAL);
+        }
+        do_clone(
+            entry,
+            clone_flags.unwrap(), 
+            stack, 
+            arg,
+            VirtAddr::from(ptid), 
+            tls, 
+            VirtAddr::from(ctid)
+        )
     }
 
     fn sys_fork() -> SyscallResult {
@@ -26,7 +42,7 @@ impl SyscallProcTrait for SyscallImpl {
         do_wait(pid as _, exit_code_ptr as _)
     }
 
-    fn sys_execve(filename: *const u8, argv: *const usize, envp: *const usize) -> SyscallResult {
+    fn sys_execve(filename: *const u8, argv: *const usize, _envp: *const usize) -> SyscallResult {
         let curr = cpu().curr.as_ref().unwrap();
         // get relative path under current working directory
         let rela_path = curr.mm().get_str(VirtAddr::from(filename as usize))?;

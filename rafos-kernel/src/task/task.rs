@@ -1,33 +1,48 @@
 use core::cell::SyncUnsafeCell;
 use alloc::collections::LinkedList;
+use syscall::{SigActions, SigSet, SigPending, SigAction, NSIG, SIGNONE};
 use super::*;
 
 use kernel_sync::{SpinLock, SpinLockGuard};
-use alloc::{sync::{Arc, Weak}, string::{String, ToString}};
+use alloc::{sync::{Arc, Weak}, string::String};
 use crate::{mm::{MM, KERNEL_SPACE}, fs::{FDManager, FSInfo}, KernelResult, loader, trampoline::*};
 
 pub struct TaskInner {
+    pub name: String,
     pub exit_code: isize,
     pub context: TaskContext,
     pub kstack: KernelStack,
     pub mm: Arc<SpinLock<MM>>,
     pub files: Arc<SpinLock<FDManager>>,
+    pub set_child_tid: usize,
+    pub clear_child_tid: usize,
+    pub sig_pending: SigPending,
+    pub sig_blocked: SigSet,
 }
 
 unsafe impl Send for TaskInner {}
 
 pub struct Task {
-    // immutable
+    /* immutable */ 
+    /// The only tid
     pub tid: TidHandle,
+    /// The tid of the task group leader
     pub pid: usize,
+    /// The trapfame of the `Task`. If the task is kernel task, this field will be `None`.
     pub trapframe_tracker: Option<TrapFrameTracker>,
-    // mutable
-    pub name: SpinLock<String>,
+    pub exit_signal: usize,
+    
+    /* mutable but be not protected by lock */
+    pub inner: SyncUnsafeCell<TaskInner>,
+    
+    /* mutable and be protected by lock */
     pub state: SpinLock<TaskState>,
     pub parent: SpinLock<Option<Weak<Task>>>,
     pub children: SpinLock<LinkedList<Arc<Task>>>,
-    pub inner: SyncUnsafeCell<TaskInner>,
+    
+    /* mutable and can share with other task */
     pub fs_info: Arc<SpinLock<FSInfo>>,
+    pub sig_actions: Arc<SpinLock<SigActions>>,
 }
 
 impl Task {
@@ -35,23 +50,29 @@ impl Task {
         Ok(Self {
             tid: TidHandle(IDLE_PID),
             pid: 0,
-            name: SpinLock::new("idle".to_string()),
             state: SpinLock::new(TaskState::RUNNABLE),
             parent: SpinLock::new(None),
             children: SpinLock::new(LinkedList::new()),
+            exit_signal: SIGNONE,
             trapframe_tracker: None,
             inner: SyncUnsafeCell::new(TaskInner {
+                name: String::from("idle"),
                 exit_code: 0,
                 context: TaskContext::zero(),
                 kstack: KernelStack::new()?,
                 mm: Arc::new(SpinLock::new(MM::new()?)),
                 files: Arc::new(SpinLock::new(FDManager::new())),
+                set_child_tid: 0,
+                clear_child_tid: 0,
+                sig_pending: SigPending::new(),
+                sig_blocked: SigSet::new(),
             }),
             fs_info: Arc::new(SpinLock::new(FSInfo {
                 umask: 0,
                 cwd: String::from("/"),
                 root: String::from("/"),
             })),
+            sig_actions: Arc::new(SpinLock::new([SigAction::default(); NSIG])),
         })
     }
 
@@ -79,23 +100,29 @@ impl Task {
         let task = Self {
             tid,
             pid: tid_num,
+            exit_signal: SIGNONE,
             trapframe_tracker: Some(trapframe_tracker),
-            name: SpinLock::new("new".to_string()),
             state: SpinLock::new(TaskState::RUNNABLE),
             parent: SpinLock::new(None),
             children: SpinLock::new(LinkedList::new()),
             inner: SyncUnsafeCell::new(TaskInner {
+                name: dir.clone(),
                 exit_code: 0,
                 context: TaskContext::new(user_trap_return as usize, kstack_base),
                 kstack,
                 mm: Arc::new(SpinLock::new(mm)),
                 files: Arc::new(SpinLock::new(FDManager::new())),
+                set_child_tid: 0,
+                clear_child_tid: 0,
+                sig_pending: SigPending::new(),
+                sig_blocked: SigSet::new(),
             }),
             fs_info: Arc::new(SpinLock::new(FSInfo {
                 umask: 0,
                 cwd: dir,
                 root: String::from("/"),
             })),
+            sig_actions: Arc::new(SpinLock::new([SigAction::default(); NSIG])),
         };
         Ok(task)
     }
@@ -134,7 +161,7 @@ impl fmt::Debug for Task {
         write!(
             f,
             "Task [{}] pid={} tid={}",
-            self.name.lock(), self.pid, self.tid.0
+            self.inner().name, self.pid, self.tid.0
         )
     }
 }

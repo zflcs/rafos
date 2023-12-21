@@ -1,8 +1,10 @@
 //! generate the user syscall interface and the kernel syscall trait.
 
 #![no_std]
+#![feature(linked_list_remove)]
 #![allow(unused_variables)]
 
+extern crate alloc;
 extern crate macros;
 mod io;
 mod file;
@@ -11,7 +13,9 @@ mod proc;
 mod timer;
 mod mm;
 mod socket;
+mod sig_defs;
 
+pub use sig_defs::*;
 pub use io::*;
 pub use file::*;
 pub use ipc::*;

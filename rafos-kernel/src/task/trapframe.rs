@@ -1,7 +1,7 @@
 use config::TRAMPOLINE;
 use mmrv::*;
 use riscv::register::sstatus::{Sstatus, set_spp, SPP, self};
-use syscall::SyscallId;
+use syscall::{SyscallId, CloneFlags};
 use crate::{KernelResult, KernelError, mm::MM, syscall::*};
 
 /// Trap frame tracker
@@ -83,17 +83,26 @@ impl TrapFrame {
     pub fn copy_from(
         &mut self,
         orig: &TrapFrame,
+        flags: CloneFlags,
         stack: usize,
+        tls: usize,
         kstack: usize,
     ) {
         *self = *orig;
+
         // Sets new kernel stack
         self.kernel_sp = kstack;
+
         // Child task returns zero
         self.set_a0(0);
+
         // Set stack pointer
         if stack != 0 {
             self.set_sp(stack);
+        }
+
+        if flags.contains(CloneFlags::CLONE_SETTLS) {
+            self.set_tp(tls);
         }
     }
 
@@ -113,6 +122,7 @@ impl TrapFrame {
                 self.user_regs[12], // x13
                 self.user_regs[13], // x14
                 self.user_regs[14], // x15
+                self.user_regs[15], // x16
             ],
         ))
     }
@@ -120,6 +130,11 @@ impl TrapFrame {
     /// Step to next instruction after the trap instruction.
     pub fn next_epc(&mut self) {
         self.user_epc += 4;
+    }
+
+    /// Step to next instruction after the trap instruction.
+    pub fn set_epc(&mut self, epc: usize) {
+        self.user_epc = epc;
     }
 
     /// Returns mutable reference of a trapframe
