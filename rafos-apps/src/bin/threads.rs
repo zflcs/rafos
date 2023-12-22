@@ -3,8 +3,6 @@
 #![feature(lang_items)]
 #![allow(internal_features)]
 
-use alloc::vec;
-
 
 #[macros::entry]
 pub fn main(argc: usize, argv: &[&str]) -> isize {

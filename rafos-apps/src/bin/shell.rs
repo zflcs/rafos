@@ -92,8 +92,8 @@ pub fn main(argc: usize, argv: &[&str]) -> isize {
                             close(output_fd);
                         }
                         // child process
-                        if exec(args_copy[0].as_str(), args_addr.as_slice(), &[core::ptr::null::<u8>()]) == -1 {
-                            println!("Error when executing!");
+                        if exec(args_copy[0].as_str(), args_addr.as_slice(), &[core::ptr::null::<u8>()]) < 0 {
+                            eprintln!("Error when executing!");
                             return -4;
                         }
                         unreachable!();

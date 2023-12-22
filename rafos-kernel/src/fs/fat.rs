@@ -1,4 +1,4 @@
-use alloc::{sync::Arc, vec::Vec};
+use alloc::{sync::Arc, vec::Vec, string::ToString};
 use core::cell::SyncUnsafeCell;
 use device_cache::{BlockCache, CacheUnit, LRUBlockCache, BLOCK_SIZE};
 use errno::Errno;
@@ -438,11 +438,19 @@ impl File for FSFile {
 pub struct FSDir {
     /// Real directory path.
     pub path: Path,
+    /// flags
+    pub flags: OpenFlags,
+    /// inner
+    pub inner: FatDir,
 }
 
 impl FSDir {
-    pub fn new(path: Path) -> Self {
-        Self { path }
+    pub fn new(mut path: Path, inner: FatDir) -> Self {
+        log::trace!("{:?}", path);
+        if !path.is_dir() {
+            path.join("/");
+        }
+        Self { path, flags: OpenFlags::O_RDWR | OpenFlags::O_DIRECTORY, inner }
     }
 }
 
@@ -453,6 +461,31 @@ impl File for FSDir {
 
     fn is_dir(&self) -> bool {
         true
+    }
+
+    fn readable(&self) -> bool {
+        true
+    }
+
+    fn read(&self, _buf: &mut [u8]) -> Option<usize> {
+        log::trace!("FSDir::read");
+        if !self.readable() {
+            return None;
+        }
+        for direntry in self.inner.iter() {
+            log::debug!("{:?}", direntry.unwrap().file_name());
+        }
+        None
+    }
+
+    unsafe fn read_all(&self) -> Vec<u8> {
+        trace!("FSDir::read");
+        assert!(self.readable());
+        if let Ok(file) = GLOBAL_FS.lock().open(&self.path, "", self.flags) {
+            file.read_all()
+        } else {
+            panic!()
+        }
     }
 }
 
@@ -483,6 +516,10 @@ pub static GLOBAL_FS: Lazy<SpinLock<FileSystem>> = Lazy::new(|| {
     SpinLock::new(fs)
 });
 
+pub static ROOT_DIRENTRY: Lazy<Arc<dyn File>> = Lazy::new(|| {
+    Arc::new(FSDir::new(Path::root(), FAT_FS.root_dir()))
+});
+
 /// Global static instance of fat filesystem.
 static FAT_FS: Lazy<fatfs::FileSystem<FatIO, FatTP, FatOCC>> = Lazy::new(|| {
     fatfs::FileSystem::new(FatIO::new(), FsOptions::new().update_accessed_date(true)).unwrap()
@@ -492,8 +529,7 @@ impl VFS for FileSystem {
     fn open(&self, pdir: &Path, name: &str, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
         let mut ori_path = pdir.clone();
         ori_path.extend(name);
-        trace!("FileSystem::open {:x?}", ori_path);
-
+        log::trace!("FileSystem::open {:x?}", ori_path);
         let root = FAT_FS.root_dir();
         // Find in the root directory
         let pdir = if pdir.is_root() {
@@ -501,10 +537,12 @@ impl VFS for FileSystem {
         } else {
             root.open_dir(pdir.rela()).map_err(|_| Errno::ENOENT)?
         };
-
         if flags.contains(OpenFlags::O_DIRECTORY | OpenFlags::O_DSYNC) || ori_path.is_dir() {
-            match pdir.open_dir(name) {
-                Ok(_) => Ok(Arc::new(FSDir::new(ori_path))),
+            let mut name = name.to_string();
+            name += "/";
+            log::trace!("name {}", name);
+            match pdir.open_dir(&name) {
+                Ok(dir) => Ok(Arc::new(FSDir::new(ori_path, dir))),
                 Err(err) => Err(from(err)),
             }
         } else {

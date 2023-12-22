@@ -1,6 +1,6 @@
 use alloc::boxed::Box;
 use time::TimeSpec;
-pub use vfs::OpenFlags;
+pub use vfs::{StatMode, OpenFlags};
 use crate::*;
 
 pub fn dup(fd: usize) -> isize {
@@ -9,7 +9,7 @@ pub fn dup(fd: usize) -> isize {
 
 
 pub fn open(filename: &str, flags: OpenFlags) -> isize {
-    sys_open(filename.as_ptr(), flags.bits() as _, 0)
+    sys_open(filename.as_ptr(), flags.bits() as _, StatMode::empty().bits() as _)
 }
 
 pub fn close(fd: usize) -> isize {
@@ -19,6 +19,10 @@ pub fn close(fd: usize) -> isize {
 // pub fn pipe(pipe: &mut [usize]) -> isize {
 //     sys_pipe(pipe.as_mut_ptr())
 // }
+
+pub fn getdents(fd: usize, buf: &mut [u8]) -> isize {
+    sys_getdents(fd, buf.as_mut_ptr(), buf.len())
+}
 
 pub fn read(fd: usize, buf: &mut [u8]) -> isize {
     sys_read(fd, buf.as_mut_ptr(), buf.len())

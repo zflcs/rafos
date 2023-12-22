@@ -22,8 +22,8 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
         SyscallId::File(id) => match id {
             SyscallFile::Read => SyscallImpl::sys_read(args[0], args[1] as _, args[2]),
             SyscallFile::Write => SyscallImpl::sys_write(args[0], args[1] as _, args[2]),
-            SyscallFile::Open => todo!(),
-            SyscallFile::Close => todo!(),
+            SyscallFile::Open => SyscallImpl::sys_open(args[0] as _, args[1], args[2]),
+            SyscallFile::Close => SyscallImpl::sys_close(args[0]),
             SyscallFile::Stat => todo!(),
             SyscallFile::FsStat => todo!(),
             SyscallFile::LsStat => todo!(),
@@ -36,6 +36,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
             SyscallFile::Dup => todo!(),
             SyscallFile::Dup2 => todo!(),
             SyscallFile::SendFile => todo!(),
+            SyscallFile::Getdents => SyscallImpl::sys_getdents(args[0], args[1] as _, args[2]),
         },
         SyscallId::Io(id) => match id {
             SyscallIO::Ioctl => todo!(),

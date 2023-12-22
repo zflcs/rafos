@@ -15,7 +15,7 @@ pub use pipe::*;
 pub use stdio::*;
 pub use info::*;
 
-use self::fat::FSDir;
+use self::fat::{FSDir, ROOT_DIRENTRY};
 
 /// Opens a file object.
 ///
@@ -29,7 +29,7 @@ use self::fat::FSDir;
 pub fn open(path: Path, flags: OpenFlags) -> Result<Arc<dyn File>, Errno> {
     // Root is always opened.
     if path.is_root() {
-        return Ok(Arc::new(FSDir::new(path)));
+        return Ok(ROOT_DIRENTRY.clone());
     }
     let mut path = path;
     let name = path.pop().unwrap();
