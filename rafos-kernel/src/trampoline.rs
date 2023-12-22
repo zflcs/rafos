@@ -37,7 +37,7 @@ pub fn user_trap_handler() -> ! {
         println!("{:#X?}", tf);
     };
     let trap_info = || {
-        debug!(
+        trace!(
             "[U] {:X?}, {:X?}, stval={:#X}, sepc={:#X} {:?}",
             scause.cause(),
             sstatus,

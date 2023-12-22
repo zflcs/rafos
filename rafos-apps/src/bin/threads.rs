@@ -8,18 +8,12 @@ use alloc::vec;
 
 #[macros::entry]
 pub fn main(argc: usize, argv: &[&str]) -> isize {
-    let v = vec![
-        thread_create(thread_a as usize, core::ptr::null()),
-        thread_create(thread_b as usize, core::ptr::null()),
-        thread_create(thread_c as usize, core::ptr::null()),
-    ];
-    for tid in v.iter() {
-        let exit_code = waittid(*tid as usize);
-        println!("thread#{} exited with code {}", tid, exit_code);
-        // assert_eq!(*tid, exit_code);
-    }
+    thread_create(thread_a as usize, core::ptr::null());
+    thread_create(thread_b as usize, core::ptr::null());
+    thread_create(thread_c as usize, core::ptr::null());
     println!("main thread exited.");
     println!("threads test passed!");
+    sleep(100);
     0
 }
 

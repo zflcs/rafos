@@ -97,16 +97,15 @@ pub fn main(argc: usize, argv: &[&str]) -> isize {
                             return -4;
                         }
                         unreachable!();
-                    } else {
-                        let mut exit_code: isize = 0;
-                        // log::debug!("exit_code_ptr {:#X}", &mut exit_code as *mut i32 as usize);
-                        let exit_pid = waitpid(pid as usize, &mut exit_code);
-                        // println!("user here {}", exit_code);
-                        assert_eq!(pid, exit_pid);
-                        println!("Shell: Process {} exited with code {}", pid, exit_code);
                     }
                     line.clear();
                 }
+                let mut exit_code: isize = 0;
+                // log::debug!("exit_code_ptr {:#X}", &mut exit_code as *mut i32 as usize);
+                while wait(&mut exit_code) > 0 {
+                    // println!("Shell: Process exited with code {}", exit_code);
+                };
+                // println!("user here {}", exit_code);
                 print!(">> ");
             }
             BS | DL => {

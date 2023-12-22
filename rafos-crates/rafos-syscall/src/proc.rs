@@ -1,5 +1,6 @@
 use numeric_enum_macro::numeric_enum;
 use macros::{GenSysMacro, GenSysTrait};
+use super::*;
 
 numeric_enum! {
     #[repr(usize)]
@@ -16,15 +17,8 @@ numeric_enum! {
         Execve = 59,
         #[arguments(a0 = exit_code: isize)]
         Exit = 60,
-        #[arguments(a0 = pid: usize, a1 = stat_addr: *mut usize, a2 = options: usize, a3 = rusage: *mut usize)]
+        #[arguments(a0 = pid: isize, a1 = wstatus: *mut isize, a2 = options: usize, a3 = rusage: usize)]
         Wait4 = 61,
-        #[arguments(a0 = pid: usize, a1 = exit_code_ptr: *mut isize)]
-        Waitpid = 1000,
-        #[arguments(a0 = entry: usize, a1 = arg: *const usize)]
-        ThreadCreate = 1001,
-        #[arguments(a0 = tid: usize)]
-        Waittid = 1002,
-
     }
 }
 
@@ -77,3 +71,39 @@ bitflags::bitflags! {
         const CLONE_IO = 0x80000000;
     }
 }
+
+
+bitflags::bitflags! {
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct WaitOptions: usize {
+        /// Return immediately if no child has exited.
+        const WNONHANG = 0x00000001;
+        /// Also return if a child has stopped (but not traced via ptrace(2)).
+        /// Status for traced children which have stopped is provided even if
+        /// this option is not specified.
+        const WUNTRACED = 0x00000002;
+        /// Wait for children that have been stopped by a delivery of a signal.
+        const WSTOPPED = 0x00000002;
+        /// Wait for children that have terminated.
+        const WEXITED = 0x00000004;
+        /// Also return if a stopped child has been resumed by delivery of SIGCONT.
+        const WCONTINUED = 0x00000008;
+        /// Leave the child in a waitable state; a later wait call can be used to
+        /// again retrieve the child status information.
+        const WNOWAIT = 0x01000000;
+
+        /* Linux specified */
+
+        /// Do not wait for children of other threads in the same thread group.
+        /// This was the default before Linux 2.4.
+        const __WNOTHREAD = 0x20000000;
+        /// Wait for all children, regardless of type ("clone" or "non-clone").
+        const __WALL = 0x40000000;
+        ///  Wait for "clone" children only.  If omitted, then wait for "non-clone"
+        /// children only. (A "clone" child is one which delivers no signal, or a
+        /// signal other than SIGCHLD to its parent upon termination.)  This option
+        /// is ignored if __WALL is also specified.
+        const __WCLONE = 0x80000000;
+    }
+}
+

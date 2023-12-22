@@ -66,7 +66,7 @@ pub fn do_clone(entry: usize, flags: CloneFlags, stack: usize, arg: *const usize
         let trapframe = TrapFrame::from(trapframe_tracker.0.start_address());
         trapframe.copy_from(curr.trapframe(), flags, stack, tls, kstack_base);
         if entry != 0 {
-            log::debug!("entry {:#X}, stack {:#X}", entry, stack);
+            log::trace!("entry {:#X}, stack {:#X}", entry, stack);
             trapframe.set_epc(entry);
         }
         trapframe.set_a0(arg as _);
@@ -137,60 +137,6 @@ pub fn do_clone(entry: usize, flags: CloneFlags, stack: usize, arg: *const usize
     }
     Ok(tid_num)
 
-}
-
-
-/// A helper for [`syscall_interface::SyscallProc::clone`]
-pub fn do_fork() -> SyscallResult {
-    let curr = cpu().curr.as_ref().unwrap();
-    log::trace!("FORK {:?}", &curr);
-    let mm = Arc::new(SpinLock::new(curr.mm().fork()?));
-    let fs_info = curr.fs_info.clone();
-    let name = curr.inner().name.clone();
-    log::trace!("{:?}", mm);
-    // New kernel stack
-    let kstack = KernelStack::new()?;
-    let tid = TidHandle::new();
-    let tid_num = tid.0;
-    let kstack_base = kstack.base();
-    
-    // Init trapframe
-    let trapframe_tracker = {
-        let mut mm = mm.lock();
-        let trapframe_tracker = init_trapframe(&mut mm, tid_num)?;
-        let trapframe = TrapFrame::from(trapframe_tracker.0.start_address());
-        trapframe.copy_from(curr.trapframe(), CloneFlags::empty(), 0, 0, kstack_base);
-        trapframe_tracker
-    };
-    let new_task = Arc::new(Task {
-        tid,
-        pid: tid_num,
-        exit_signal: SIGNONE,
-        trapframe_tracker: Some(trapframe_tracker),
-        state: SpinLock::new(TaskState::RUNNABLE),
-        parent: SpinLock::new(Some(Arc::downgrade(&curr))),
-        children: SpinLock::new(LinkedList::new()),
-        inner: SyncUnsafeCell::new(TaskInner {
-            name,
-            exit_code: 0,
-            context:  TaskContext::new(user_trap_return as usize, kstack_base),
-            kstack,
-            mm,
-            files: Arc::new(SpinLock::new(FDManager::new())),
-            set_child_tid: 0,
-            clear_child_tid: 0,
-            sig_pending: SigPending::new(),
-            sig_blocked: SigSet::new(),
-        }),
-        fs_info,
-        sig_actions: {
-            let orig = curr.sig_actions.lock();
-            Arc::new(SpinLock::new(orig.clone()))
-        },
-    });
-    TASK_MANAGER.lock().add(new_task.clone());
-    curr.children.lock().push_back(new_task);
-    Ok(tid_num)
 }
 
 /// A helper for [`syscall_interface::SyscallProc::execve`]

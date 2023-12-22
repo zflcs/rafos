@@ -6,7 +6,7 @@ numeric_enum! {
     #[repr(usize)]
     #[derive(Debug, GenSysMacro, GenSysTrait)]
     pub enum SyscallTimer {
-        #[arguments(a0 = rqtp: *mut TimeSpec, a1 = rmtp: *const TimeSpec)]
+        #[arguments(a0 = rqtp: *const TimeSpec, a1 = rmtp: *mut TimeSpec)]
         NanoSleep = 35,
         #[arguments(a0 = which: usize, a1 = value: *mut ITimerVal)]
         Getitimer = 36,

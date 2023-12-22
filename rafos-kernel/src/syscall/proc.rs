@@ -1,6 +1,6 @@
 
 use super::SyscallImpl;
-use crate::{cpu::cpu, task::{do_wait_tid, do_wait, do_exec, do_fork, do_thread_create, do_exit, do_clone}, fs::open, read_user};
+use crate::{cpu::cpu, task::{do_wait, do_exec, do_exit, do_clone}, fs::open, read_user};
 use alloc::{vec::Vec, string::String};
 use errno::Errno;
 use mmrv::VirtAddr;
@@ -31,15 +31,38 @@ impl SyscallProcTrait for SyscallImpl {
     }
 
     fn sys_fork() -> SyscallResult {
-        do_fork()
+        do_clone(
+            0,
+            CloneFlags::from_bits(SIGCHLD).unwrap(), 
+            0,
+            core::ptr::null(),
+            VirtAddr::zero(), 
+            0, 
+            VirtAddr::zero()
+        )
     }
 
-    fn sys_waittid(tid:usize) -> SyscallResult {
-        do_wait_tid(tid)
-    }
+    fn sys_wait4(pid:isize, wstatus:*mut isize, options:usize, rusage: usize) -> SyscallResult {
+        let options = WaitOptions::from_bits(options);
+        if options.is_none() {
+            return Err(Errno::EINVAL);
+        }
+        let options = options.unwrap();
+        if !options
+            .difference(
+                WaitOptions::WNONHANG
+                    | WaitOptions::WUNTRACED
+                    | WaitOptions::WCONTINUED
+                    | WaitOptions::__WALL
+                    | WaitOptions::__WNOTHREAD
+                    | WaitOptions::__WCLONE,
+            )
+            .is_empty()
+        {
+            return Err(Errno::EINVAL);
+        }
 
-    fn sys_waitpid(pid:usize, exit_code_ptr: *mut isize) -> SyscallResult {
-        do_wait(pid as _, exit_code_ptr as _)
+        do_wait(pid, options | WaitOptions::WEXITED, 0, wstatus, rusage)
     }
 
     fn sys_execve(filename: *const u8, argv: *const usize, _envp: *const usize) -> SyscallResult {
@@ -76,10 +99,6 @@ impl SyscallProcTrait for SyscallImpl {
         do_exec(String::from(path.as_str()), elf_data.as_slice(), args)
     }
 
-    fn sys_thread_create(entry:usize, arg: *const usize) -> SyscallResult {
-        do_thread_create(entry, arg as _)
-    }
-    
 }
 
 

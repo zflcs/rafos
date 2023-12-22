@@ -1,4 +1,5 @@
 use alloc::boxed::Box;
+use time::TimeSpec;
 pub use vfs::OpenFlags;
 use crate::*;
 
@@ -49,21 +50,18 @@ pub fn exec(filename: &str, args: &[*const u8], envs: &[*const u8]) -> isize {
 }
 
 
-pub fn wait(exit_code_ptr: *mut isize) -> isize {
-    sys_waitpid(usize::MAX, exit_code_ptr)
+pub fn wait(exit_code_ptr: &mut isize) -> isize {
+    sys_wait4(-1, exit_code_ptr, WaitOptions::__WALL.bits(), 0)
 }
 
-pub fn waitpid(pid: usize, exit_code_ptr: &mut isize) -> isize {
-    sys_waitpid(pid, exit_code_ptr)
-    
+pub fn waitpid(pid: isize, exit_code_ptr: &mut isize) -> isize {
+    sys_wait4(pid, exit_code_ptr, 0, 0)    
 }
 
-pub fn waittid(tid: usize) -> isize {
-    sys_waittid(tid)
-}
 
-pub fn sleep(period_ms: usize) {
-    // sys_nano_sleep(rqtp, rmtp)
+pub fn sleep(ms: usize) {
+    let req = TimeSpec::new((ms as f64) / 1000.0);
+    sys_nano_sleep(&req, core::ptr::null_mut());
 }
 
 const STACK_SIZE: usize = 2 * 1024;

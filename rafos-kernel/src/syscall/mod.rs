@@ -69,10 +69,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
             SyscallProc::Vfork => todo!(),
             SyscallProc::Execve => SyscallImpl::sys_execve(args[0] as _, args[1] as _, args[2] as _),
             SyscallProc::Exit => SyscallImpl::sys_exit(args[0] as _),
-            SyscallProc::Wait4 => todo!(),
-            SyscallProc::Waitpid => SyscallImpl::sys_waitpid(args[0], args[1] as _),
-            SyscallProc::ThreadCreate => SyscallImpl::sys_thread_create(args[0], args[1] as _),
-            SyscallProc::Waittid => SyscallImpl::sys_waittid(args[0]),
+            SyscallProc::Wait4 => SyscallImpl::sys_wait4(args[0] as _, args[1] as _, args[2], args[3]),
         },
         SyscallId::Socket(id) => match id {
             SyscallSocket::Socket => todo!(),
@@ -80,7 +77,7 @@ pub fn syscall(args: SyscallArgs) -> SyscallResult {
             SyscallSocket::Accept => todo!(),
         },
         SyscallId::Timer(id) => match id {
-            SyscallTimer::NanoSleep => todo!(),
+            SyscallTimer::NanoSleep => SyscallImpl::sys_nano_sleep(args[0] as _, args[1] as _),
             SyscallTimer::Getitimer => todo!(),
             SyscallTimer::Alarm => todo!(),
             SyscallTimer::Setitimer => todo!(),
